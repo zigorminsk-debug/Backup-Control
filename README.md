@@ -25,7 +25,9 @@ Android включено через `backup_rules.xml` / `data_extraction_rules.
 ./gradlew testDebugUnitTest    # модульные тесты (WeekSchedule, ReleaseRules)
 ```
 
-Подписанная сборка требует постоянного ключа: см. [`SIGNING.md`](SIGNING.md).
+Все сборки подписываются одним постоянным ключом из [`release-key/`](release-key/) — иначе
+обновление не установится поверх приложения и данные потеряются. Подробности:
+[`SIGNING.md`](SIGNING.md).
 
 ## CI: GitHub Actions
 

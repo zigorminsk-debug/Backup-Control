@@ -8,13 +8,15 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Signing material must never be committed. The public certificate and its
-# fingerprint live in docs/; the private key lives only in GitHub Secrets.
+# Signing material must never be committed... except for this project's single
+# permanent key, which is published on purpose so that every CI build is signed
+# with the same certificate (see SIGNING.md).
 signing/
 *.jks
 *.keystore
 *.p12
 *.pfx
 *.pem
+!release-key/backup-control-release.p12
 .env
 __pycache__/

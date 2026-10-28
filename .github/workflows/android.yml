@@ -52,7 +52,21 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         shell: bash
         run: |
-          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+          umask 077
+          if [[ -n "$KEYSTORE_BASE64" && -n "$KEYSTORE_PASSWORD" ]]; then
+            # Repository secrets win when present: the key can then be rotated
+            # without touching the repository contents.
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/backup-control-signing.p12"
+            KEY_ALIAS="${KEY_ALIAS:-backup-control}"
+            KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          elif [[ -f release-key/backup-control-release.p12 ]]; then
+            # The permanent key is committed to the repository on purpose, so
+            # that every build - whoever runs it - is signed identically.
+            cp release-key/backup-control-release.p12 "$RUNNER_TEMP/backup-control-signing.p12"
+            KEYSTORE_PASSWORD="$(tr -d '\r\n' < release-key/password.txt)"
+            KEY_PASSWORD="$KEYSTORE_PASSWORD"
+            KEY_ALIAS=backup-control
+          else
             echo 'ready=false' >> "$GITHUB_OUTPUT"
             echo '::warning::Постоянный ключ подписи не настроен: будет собрана только тестовая debug-версия, без публикации релиза.'
             {
@@ -63,8 +77,13 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          umask 077
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/backup-control-signing.p12"
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/backup-control-signing.p12"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
           echo 'ready=true' >> "$GITHUB_OUTPUT"
           FINGERPRINT="$(keytool -list -v -keystore "$RUNNER_TEMP/backup-control-signing.p12" \
             -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" 2>/dev/null \
@@ -78,11 +97,6 @@ jobs:
 
       - name: Test and build signed release
         if: steps.signing.outputs.ready == 'true'
-        env:
-          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/backup-control-signing.p12
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         shell: bash
         run: |
           set -o pipefail
@@ -90,6 +104,17 @@ jobs:
             python3 -c 'from pathlib import Path; import os; s=Path(os.environ["RUNNER_TEMP"],"gradle.log").read_text(errors="replace")[-18000:]; print("::error::" + s.replace("%","%25").replace("\r","%0D").replace("\n","%0A"))'
             exit 1
           }
+          # Every build proves its own certificate: an accidental key change must
+          # fail here, long before any user receives an APK it cannot install.
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | tee "$RUNNER_TEMP/release-certs.txt"
+          BUILT_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/release-certs.txt" | head -1)"
+          PINNED_SHA="$(tr -d '[:space:]' < docs/release-fingerprint.txt)"
+          if [[ "$BUILT_SHA" != "$PINNED_SHA" ]]; then
+            echo "::error::APK подписан ключом $BUILT_SHA, а закреплён $PINNED_SHA. Обновление поверх установленного приложения стало бы невозможным."
+            exit 1
+          fi
 
       - name: Remove release signing key from the runner
         if: always()
