@@ -134,8 +134,15 @@ def assert_hidden_and_saved():
         raise AssertionError("IP addresses were not archived with the completion")
 
 
+IP_FIELD = "IP-адрес"
+
+
 def ip_fields():
-    return [n for n in tree().iter("node") if n.get("content-desc") == "IP-адрес"]
+    return [n for n in tree().iter("node") if n.get("content-desc") == IP_FIELD]
+
+
+def describe_fields():
+    return [(n.get("text", ""), n.get("bounds", ""), n.get("focused", "")) for n in ip_fields()]
 
 
 def tap_fresh(text=None, description=None, exact=False):
@@ -144,7 +151,8 @@ def tap_fresh(text=None, description=None, exact=False):
     node = wait_for(text=text, description=description, exact=exact)
     if node is None:
         raise AssertionError("Control not found: " + str(text or description))
-    click(find(tree(), text=text, description=description, exact=exact) or node)
+    fresh = find(tree(), text=text, description=description, exact=exact)
+    click(fresh if fresh is not None else node)
 
 
 def clear_focused_field():
@@ -201,24 +209,24 @@ def main():
     click(add)
     click(wait_for(klass="android.widget.EditText"))
     adb("shell", "input", "text", "CI_Server")
-    tap_fresh(description="IP-адрес")
+    tap_fresh(description=IP_FIELD, exact=True)
     clear_focused_field()
     adb("shell", "input", "text", "192.168.1.10")
     if [n.get("text", "") for n in ip_fields()] != ["192.168.1.10"]:
-        raise AssertionError("A typed IP address was altered: "
-                             + str([n.get("text", "") for n in ip_fields()]))
+        raise AssertionError("A typed IP address was altered: " + str(describe_fields()))
     # A second machine: the plus button appends another address row, and digits
     # without separators are formed into an address by the field itself.
-    tap_fresh(description="Добавить ещё один IP-адрес")
+    tap_fresh(description="Добавить ещё один адрес", exact=True)
     fields = ip_fields()
     if len(fields) != 2:
-        raise AssertionError("The plus button did not add exactly one row: " + str(len(fields)))
+        raise AssertionError("The plus button did not add exactly one row: "
+                             + str(describe_fields()))
     click(fields[-1])
     clear_focused_field()
     adb("shell", "input", "text", "19216800")
     addresses = [n.get("text", "") for n in ip_fields()]
     if addresses != ["192.168.1.10", "192.168.0.0"]:
-        raise AssertionError("IP rows are wrong after typing: " + str(addresses))
+        raise AssertionError("IP rows are wrong after typing: " + str(describe_fields()))
     tap_fresh(text="Добавить", exact=True)
     root, _ = scroll_to(text="192.168.1.10 · 192.168.0.0")
     # Schedule an error reminder before completing the task. It must remain

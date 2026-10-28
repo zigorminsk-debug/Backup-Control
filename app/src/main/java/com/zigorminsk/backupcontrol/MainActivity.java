@@ -780,7 +780,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(0, -2, 1);
         addressHeading.addView(addressLabel, headingParams);
         TextView addAddress = button("＋", GREEN_DARK, MINT, 16);
-        addAddress.setContentDescription("Добавить ещё один IP-адрес");
+        addAddress.setContentDescription("Добавить ещё один адрес");
         addressHeading.addView(addAddress, wrapWrap());
         LinearLayout.LayoutParams ahp = matchWrap(); ahp.topMargin = dp(16);
         form.addView(addressHeading, ahp);
@@ -883,7 +883,7 @@ public final class MainActivity extends Activity {
         });
         row.addView(field, new LinearLayout.LayoutParams(0, -2, 1));
         TextView remove = button("✕", MUTED, CANVAS, 14);
-        remove.setContentDescription("Удалить этот IP-адрес");
+        remove.setContentDescription("Удалить адрес");
         row.addView(remove);
         LinearLayout.LayoutParams rp = matchWrap(); rp.topMargin = dp(6);
         rows.addView(row, rp);
