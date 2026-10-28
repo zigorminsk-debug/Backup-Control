@@ -19,6 +19,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -67,9 +69,21 @@ public final class MainActivity extends Activity {
     private View navSpace;
     private boolean pendingInstall;
     private boolean registered;
+    private boolean resumed;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable cycleTick = new Runnable() {
+        @Override public void run() {
+            if (!resumed) return;
+            if (store.syncCycle()) render();
+            scheduleCycleTick();
+        }
+    };
     private final Map<Integer, View> itemViews = new HashMap<>();
     private final BroadcastReceiver changes = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) { render(); }
+        @Override public void onReceive(Context context, Intent intent) {
+            render();
+            if (resumed) scheduleCycleTick();
+        }
     };
 
     @Override public void onCreate(Bundle state) {
@@ -99,9 +113,11 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
         if (store.syncCycle()) Notifications.weekly(this);
         ReminderScheduler.rescheduleAll(this);
         render();
+        scheduleCycleTick();
         handleIntent(getIntent());
         if (pendingInstall) {
             pendingInstall = false;
@@ -111,6 +127,18 @@ public final class MainActivity extends Activity {
                 toast("Разрешите установку обновлений в настройках Android.");
             }
         }
+    }
+
+    @Override protected void onPause() {
+        resumed = false;
+        uiHandler.removeCallbacks(cycleTick);
+        super.onPause();
+    }
+
+    private void scheduleCycleTick() {
+        uiHandler.removeCallbacks(cycleTick);
+        long delay = Math.max(250, store.nextControl() - System.currentTimeMillis() + 250);
+        uiHandler.postDelayed(cycleTick, delay);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -521,6 +549,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     store.setSchedule(DAYS[spinner.getSelectedItemPosition()], chosen[0], chosen[1]);
                     ReminderScheduler.scheduleWeekly(this);
+                    if (resumed) scheduleCycleTick();
                     maybeRequestNotifications();
                     render();
                     toast("Расписание сохранено");

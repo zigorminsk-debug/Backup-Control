@@ -45,6 +45,14 @@ public class WeekScheduleTest {
                 WeekSchedule.nextOccurrence(now, Calendar.MONDAY, 9, 0, berlin));
     }
 
+    @Test public void nonexistentDstTimeDoesNotShiftFollowingWeek() {
+        TimeZone berlin = TimeZone.getTimeZone("Europe/Berlin");
+        // 02:30 on March 29 is skipped; the following Sunday must still be 02:30.
+        long afterJump = instant(berlin, 2026, 3, 29, 4, 0);
+        assertEquals(instant(berlin, 2026, 4, 5, 2, 30),
+                WeekSchedule.nextOccurrence(afterJump, Calendar.SUNDAY, 2, 30, berlin));
+    }
+
     @Test public void rejectsInvalidSchedule() {
         assertThrows(IllegalArgumentException.class,
                 () -> WeekSchedule.nextOccurrence(0, 0, 9, 0, MINSK));

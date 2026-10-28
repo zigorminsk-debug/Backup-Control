@@ -48,7 +48,8 @@ final class BackupStore {
 
     void setSchedule(int weekday, int hour, int minute) {
         synchronized (LOCK) {
-            // Changing the schedule should not erase checks already made this week.
+            // First close the old cycle, then preserve any checks in the current one.
+            syncCycle();
             prefs.edit().putInt("weekday", weekday).putInt("hour", hour).putInt("minute", minute)
                     .putString("cycle", cycleKey(weekday, hour, minute)).commit();
         }
@@ -98,6 +99,9 @@ final class BackupStore {
 
     void setChecked(int id, boolean checked) {
         synchronized (LOCK) {
+            // If an inexact alarm is delayed while the app is open, reset the
+            // previous cycle before accepting a new check, never after it.
+            syncCycle();
             List<BackupItem> items = load();
             for (BackupItem item : items) if (item.id == id) item.checked = checked;
             save(items);

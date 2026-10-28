@@ -10,7 +10,15 @@ public final class WeekSchedule {
 
     public static long nextOccurrence(long now, int weekday, int hour, int minute, TimeZone zone) {
         Calendar candidate = candidateForThisWeek(now, weekday, hour, minute, zone);
-        if (candidate.getTimeInMillis() <= now) candidate.add(Calendar.DAY_OF_MONTH, 7);
+        if (candidate.getTimeInMillis() <= now) {
+            // A nonexistent local time may have been normalized (for example,
+            // 02:30 -> 03:30 on the spring DST transition). Reapply the chosen
+            // wall time on the following date rather than carrying 03:30 forward.
+            candidate.set(Calendar.HOUR_OF_DAY, 12);
+            candidate.add(Calendar.DAY_OF_MONTH, 7);
+            candidate.set(Calendar.HOUR_OF_DAY, hour);
+            candidate.set(Calendar.MINUTE, minute);
+        }
         return candidate.getTimeInMillis();
     }
 

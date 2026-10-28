@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Keep the checklist and reminders; never copy downloaded update APKs. -->
+    <include domain="sharedpref" path="backup_control.xml" />
+</full-backup-content>
