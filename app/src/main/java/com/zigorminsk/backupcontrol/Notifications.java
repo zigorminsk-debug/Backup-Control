@@ -66,6 +66,9 @@ final class Notifications {
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         try {
             manager.cancel(WEEKLY_ID); // Remove the generic notification from older versions.
+            // A previous week's summary can still be visible. Replace it with a
+            // fresh notification so this week's reminder can alert again.
+            manager.cancel(SUMMARY_TAG, WEEKLY_ID);
             for (StatusBarNotification existing : manager.getActiveNotifications()) {
                 if (WEEKLY_TAG.equals(existing.getTag())) manager.cancel(WEEKLY_TAG, existing.getId());
             }
@@ -82,6 +85,7 @@ final class Notifications {
                         .setContentIntent(content).setAutoCancel(true)
                         .setGroup(GROUP).setOnlyAlertOnce(true);
                 if (Build.VERSION.SDK_INT >= 26) builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY);
+                else builder.setPriority(Notification.PRIORITY_LOW);
                 manager.notify(WEEKLY_TAG, item.id, builder.build());
             }
             postWeeklySummary(context, pending);
@@ -107,7 +111,13 @@ final class Notifications {
             if (!item.checked && shown.contains(item.id)) remaining.add(item);
         }
         if (remaining.isEmpty()) manager.cancel(SUMMARY_TAG, WEEKLY_ID);
-        else if (canPost(context, CHECKS)) postWeeklySummary(context, remaining);
+        else if (canPost(context, CHECKS)) {
+            try {
+                postWeeklySummary(context, remaining);
+            } catch (SecurityException ignored) {
+                // Permission may have changed between the check and posting.
+            }
+        }
     }
 
     private static void postWeeklySummary(Context context, List<BackupItem> pending) {

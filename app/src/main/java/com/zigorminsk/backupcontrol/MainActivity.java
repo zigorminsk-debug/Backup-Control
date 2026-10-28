@@ -461,7 +461,8 @@ public final class MainActivity extends Activity {
                 LinearLayout reminder = vertical();
                 reminder.setPadding(dp(12), dp(10), dp(12), dp(4));
                 reminder.setBackground(round(AMBER_BG, 12));
-                String label = current.reminderDelivered ? "НАПОМИНАНИЕ ОТПРАВЛЕНО" : "НАПОМИНАНИЕ ОБ ОШИБКЕ";
+                String label = current.reminderDelivered ? "НАПОМИНАНИЕ ОТПРАВЛЕНО" :
+                        current.reminderAt <= System.currentTimeMillis() ? "ПРОСРОЧЕНО" : "НАПОМИНАНИЕ ОБ ОШИБКЕ";
                 reminder.addView(text(label + "  ·  " + shortDate(current.reminderAt), 10, AMBER_TEXT, true));
                 String note = current.reminderNote.isEmpty() ? "Разобраться с ошибкой" : current.reminderNote;
                 TextView details = text(note, 13, INK, true);

@@ -76,7 +76,8 @@ public final class ArchiveVerificationInstrumentation extends Instrumentation {
             // Old checked items had no timestamp. Preserve the completion and
             // explicitly represent the date as unknown rather than inventing it.
             JSONArray legacyItems = new JSONArray().put(new JSONObject().put("id", 1)
-                    .put("name", "Старый пункт").put("checked", true));
+                    .put("name", "Старый пункт").put("checked", true)
+                    .put("reminderAt", now + 60000).put("reminderNote", "Старая ошибка"));
             String oldCycle = WeekSchedule.currentCycleKey(System.currentTimeMillis(), Calendar.MONDAY,
                     9, 0, TimeZone.getDefault());
             prefs.edit().clear().putBoolean("initialized", true).putInt("nextId", 2)
@@ -86,7 +87,20 @@ public final class ArchiveVerificationInstrumentation extends Instrumentation {
             require(migrated.item(1).checked && migrated.archive().size() == 1
                             && migrated.archive().get(0).completedAt == 0,
                     "legacy checked item must migrate without a fake timestamp");
+            require(migrated.item(1).reminderAt == now + 60000
+                    && "Старая ошибка".equals(migrated.item(1).reminderNote),
+                    "legacy error reminder must survive migration");
             require(new BackupStore(context).archive().size() == 1, "migration must run only once");
+
+            prefs.edit().clear().putBoolean("initialized", true).putInt("nextId", 2)
+                    .putInt("weekday", Calendar.MONDAY).putInt("hour", 9).putInt("minute", 0)
+                    .putString("cycle", "2000-01-01").putString("items", legacyItems.toString()).commit();
+            BackupStore overdueMigration = new BackupStore(context);
+            require(!overdueMigration.item(1).checked && overdueMigration.archive().size() == 1
+                    && overdueMigration.item(1).reminderAt == now + 60000,
+                    "an old completed task must return without losing its history or reminder");
+            require(overdueMigration.unnotifiedWeeklyCycle() != null,
+                    "migration must preserve an undelivered weekly reminder");
             result.putString("archive_check", "PASS");
             prefs.edit().clear().commit();
             finish(Activity.RESULT_OK, result);
