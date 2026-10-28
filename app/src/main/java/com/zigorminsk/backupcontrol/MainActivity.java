@@ -22,8 +22,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -39,6 +41,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +64,8 @@ public final class MainActivity extends Activity {
     private static final int[] DAYS = {Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY,
             Calendar.THURSDAY, Calendar.FRIDAY, Calendar.SATURDAY, Calendar.SUNDAY};
     private static final String[] DAY_LABELS = {"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"};
+    /** A task rarely covers more machines than this; keeps the dialog usable. */
+    private static final int MAX_IPS = 8;
 
     private BackupStore store;
     private ScrollView scroll;
@@ -418,6 +423,11 @@ public final class MainActivity extends Activity {
         TextView name = text(entry.itemName, 15, INK, true);
         name.setMaxLines(3);
         copy.addView(name);
+        if (!entry.ips.isEmpty()) {
+            TextView addresses = text(IpAddresses.join(entry.ips), 12, MUTED, false);
+            LinearLayout.LayoutParams ap = matchWrap(); ap.topMargin = dp(3);
+            copy.addView(addresses, ap);
+        }
         String completed = entry.completedAt > 0
                 ? "Выполнено " + new SimpleDateFormat("d MMMM yyyy, HH:mm", RU).format(entry.completedAt)
                 : "Дата выполнения не сохранена в прежней версии";
@@ -617,6 +627,12 @@ public final class MainActivity extends Activity {
         TextView name = text(item.name, 15, INK, true);
         name.setMaxLines(3);
         label.addView(name);
+        if (!item.ips.isEmpty()) {
+            TextView addresses = text(IpAddresses.join(item.ips), 12, MUTED, false);
+            addresses.setLineSpacing(dp(1), 1f);
+            LinearLayout.LayoutParams ap = matchWrap(); ap.topMargin = dp(3);
+            label.addView(addresses, ap);
+        }
         TextView state = text(item.checked ? "Проверено" : "Ожидает проверки", 12,
                 item.checked ? GREEN_DARK : MUTED, false);
         LinearLayout.LayoutParams stateParams = matchWrap(); stateParams.topMargin = dp(4);
@@ -747,30 +763,135 @@ public final class MainActivity extends Activity {
     }
 
     private void editItem(BackupItem item) {
+        LinearLayout form = dialogForm();
+        form.addView(dialogLabel(item == null ? "НАЗВАНИЕ" : "НАЗВАНИЕ И АДРЕСА"));
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(100)});
         input.setHint("Например, сервер бухгалтерии");
         if (item != null) { input.setText(item.name); input.setSelection(input.length()); }
-        LinearLayout form = dialogForm(); form.addView(input, matchWrap());
+        form.addView(input, matchWrap());
+
+        LinearLayout addressHeading = horizontal();
+        addressHeading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView addressLabel = dialogLabel("IP-АДРЕС");
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(0, -2, 1);
+        addressHeading.addView(addressLabel, headingParams);
+        TextView addAddress = button("＋", GREEN_DARK, MINT, 16);
+        addAddress.setContentDescription("Добавить ещё один IP-адрес");
+        addressHeading.addView(addAddress, wrapWrap());
+        LinearLayout.LayoutParams ahp = matchWrap(); ahp.topMargin = dp(16);
+        form.addView(addressHeading, ahp);
+
+        LinearLayout rows = vertical();
+        LinearLayout.LayoutParams rowsParams = matchWrap(); rowsParams.topMargin = dp(4);
+        form.addView(rows, rowsParams);
+        List<EditText> fields = new ArrayList<>();
+        List<View> removers = new ArrayList<>();
+        Runnable sync = () -> {
+            boolean removable = fields.size() > 1;
+            for (View remover : removers) remover.setVisibility(removable ? View.VISIBLE : View.GONE);
+            addAddress.setVisibility(fields.size() >= MAX_IPS ? View.GONE : View.VISIBLE);
+        };
+        if (item == null || item.ips.isEmpty()) {
+            addIpRow(rows, fields, removers, "", sync);
+        } else {
+            for (String address : item.ips) addIpRow(rows, fields, removers, address, sync);
+        }
+        sync.run();
+        addAddress.setOnClickListener(v -> {
+            if (fields.size() >= MAX_IPS) return;
+            EditText added = addIpRow(rows, fields, removers, "", sync);
+            added.requestFocus();
+        });
+        TextView hint = text("Один пункт может проверять несколько машин: «＋» добавляет ещё адрес. "
+                + "Точки подставляются автоматически.", 12, MUTED, false);
+        hint.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(10);
+        form.addView(hint, hp);
+
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(item == null ? "Новый пункт" : "Переименовать пункт")
+                .setTitle(item == null ? "Новый пункт" : "Изменить пункт")
                 .setView(form).setNegativeButton("Отмена", null)
                 .setPositiveButton(item == null ? "Добавить" : "Сохранить", null).create();
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String name = input.getText().toString().trim();
             if (name.isEmpty()) { input.setError("Введите название"); return; }
-            if (item == null) store.add(name); else store.rename(item.id, name);
+            List<String> addresses = new ArrayList<>();
+            for (EditText field : fields) {
+                String address = field.getText().toString().trim();
+                if (address.isEmpty()) continue;
+                if (!IpAddresses.isValid(address)) {
+                    field.setError("Формат: 192.168.1.10");
+                    return;
+                }
+                if (addresses.contains(address)) {
+                    field.setError("Этот адрес уже добавлен");
+                    return;
+                }
+                addresses.add(address);
+            }
+            if (item == null) store.add(name, addresses); else store.rename(item.id, name, addresses);
             dialog.dismiss();
             render();
         }));
         dialog.show();
     }
 
+    /** One numeric IP field that formats itself; "+" adds more of them. */
+    private EditText addIpRow(LinearLayout rows, List<EditText> fields, List<View> removers,
+                              String value, Runnable onChange) {
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setHint("192.168.1.10");
+        field.setContentDescription("IP-адрес");
+        // A numeric keyboard keeps the input to digits; the decimal flag keeps
+        // the '.' key on keyboards that hide it, and the text watcher inserts
+        // dots itself so the address is formed while typing.
+        field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(15)});
+        field.setText(value);
+        field.setSelection(field.length());
+        field.addTextChangedListener(new TextWatcher() {
+            private boolean formatting;
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+            @Override public void afterTextChanged(Editable s) {
+                if (formatting) return;
+                String formatted = IpAddresses.formatInput(s);
+                if (formatted.contentEquals(s)) return;
+                formatting = true;
+                field.setText(formatted);
+                // Always continue typing at the end of the formatted address.
+                field.setSelection(formatted.length());
+                formatting = false;
+            }
+        });
+        row.addView(field, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView remove = button("✕", MUTED, CANVAS, 14);
+        remove.setContentDescription("Удалить этот IP-адрес");
+        row.addView(remove);
+        LinearLayout.LayoutParams rp = matchWrap(); rp.topMargin = dp(6);
+        rows.addView(row, rp);
+        fields.add(field);
+        removers.add(remove);
+        onChange.run();
+        remove.setOnClickListener(v -> {
+            if (fields.size() <= 1) return;
+            rows.removeView(row);
+            fields.remove(field);
+            removers.remove(remove);
+            onChange.run();
+        });
+        return field;
+    }
+
     private void showItemMenu(BackupItem item) {
         new AlertDialog.Builder(this).setTitle(item.name)
-                .setItems(new String[]{"Переименовать", "Удалить пункт"}, (dialog, which) -> {
+                .setItems(new String[]{"Изменить", "Удалить пункт"}, (dialog, which) -> {
                     if (which == 0) editItem(item);
                     else new AlertDialog.Builder(this).setTitle("Удалить пункт?")
                             .setMessage("Пункт «" + item.name + "» и его напоминание будут удалены.")

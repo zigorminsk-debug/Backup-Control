@@ -126,6 +126,12 @@ def assert_hidden_and_saved():
     if not task or not task.get("checked") or not any(entry.get("itemId") == task.get("id")
             and entry.get("completedAt", 0) > 0 for entry in entries):
         raise AssertionError("Completed task and its timestamp were not persisted")
+    expected_ips = ["192.168.1.10", "192.168.0.0"]
+    if task.get("ips") != expected_ips:
+        raise AssertionError("IP addresses were not saved: " + str(task.get("ips")))
+    if not any(entry.get("itemId") == task.get("id") and entry.get("ips") == expected_ips
+               for entry in entries):
+        raise AssertionError("IP addresses were not archived with the completion")
 
 
 def allow_notifications_if_asked():
@@ -170,12 +176,28 @@ def main():
         raise AssertionError("Home screen did not appear")
     capture()
 
-    # Add a task to the real UI.
+    # Add a task to the real UI, with two IP addresses. The address field must
+    # accept plain digits and turn them into a dotted address by itself.
     _, add = scroll_to(description="Добавить пункт проверки")
     click(add)
     click(wait_for(klass="android.widget.EditText"))
     adb("shell", "input", "text", "CI_Server")
+    click(wait_for(description="IP-адрес"))
+    adb("shell", "input", "text", "192.168.1.10")
+    root = tree()
+    formatted = [n.get("text", "") for n in root.iter("node") if n.get("text")]
+    if "192.168.1.10" not in formatted:
+        raise AssertionError("A typed IP address was altered: " + str(formatted))
+    # A second machine: the plus button appends another address row, and digits
+    # without separators are formed into an address by the field itself.
+    click(wait_for(description="Добавить ещё один IP-адрес"))
+    adb("shell", "input", "text", "19216800")
+    root = tree()
+    formatted = [n.get("text", "") for n in root.iter("node") if n.get("text")]
+    if "192.168.1.10" not in formatted or "192.168.0.0" not in formatted:
+        raise AssertionError("The second IP address row was not formed: " + str(formatted))
     click(wait_for(text="Добавить", exact=True))
+    root, _ = scroll_to(text="192.168.1.10 · 192.168.0.0")
     # Schedule an error reminder before completing the task. It must remain
     # accessible even when the task has moved to the archive.
     root, checkbox = scroll_to(description="Отметить проверенным: CI_Server")

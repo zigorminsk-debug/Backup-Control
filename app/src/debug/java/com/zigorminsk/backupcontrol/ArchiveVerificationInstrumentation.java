@@ -27,7 +27,7 @@ public final class ArchiveVerificationInstrumentation extends Instrumentation {
             prefs.edit().clear().commit();
             BackupStore store = new BackupStore(context);
             require(store.unnotifiedWeeklyCycle() == null, "new install must not alert early");
-            store.add("Archive test");
+            store.add("Archive test", java.util.Arrays.asList("192.168.1.10", "192.168.1.11"));
             int id = store.items().get(store.items().size() - 1).id;
             long now = System.currentTimeMillis();
             store.setReminder(id, now + 60000, "Ошибка остаётся");
@@ -37,6 +37,9 @@ public final class ArchiveVerificationInstrumentation extends Instrumentation {
             require(item.checked && item.currentArchiveId == entry.id, "completion must hide the task");
             require(entry.itemId == id && entry.completedAt >= now && entry.completedAt <= System.currentTimeMillis(),
                     "archive must retain the real completion timestamp");
+            require(entry.ips.size() == 2 && entry.ips.get(0).equals("192.168.1.10")
+                            && store.item(id).ips.size() == 2,
+                    "IP addresses must survive completion and be archived as a snapshot");
             require(item.availableOn.equals(WeekSchedule.nextControlDate(now, store.weekday(), TimeZone.getDefault())),
                     "completed task must wait for the next chosen day");
             store.setChecked(id, true);

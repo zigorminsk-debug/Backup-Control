@@ -133,19 +133,25 @@ final class BackupStore {
         }
     }
 
-    void add(String name) {
+    void add(String name, List<String> ips) {
         synchronized (LOCK) {
             List<BackupItem> items = loadItems();
             int id = prefs.getInt("nextId", 1);
-            items.add(new BackupItem(id, name));
+            BackupItem item = new BackupItem(id, name);
+            item.ips = new ArrayList<>(ips);
+            items.add(item);
             prefs.edit().putInt("nextId", id + 1).putString("items", encodeItems(items)).commit();
         }
     }
 
-    void rename(int id, String name) {
+    void rename(int id, String name, List<String> ips) {
         synchronized (LOCK) {
             List<BackupItem> items = loadItems();
-            for (BackupItem item : items) if (item.id == id) item.name = name;
+            for (BackupItem item : items) {
+                if (item.id != id) continue;
+                item.name = name;
+                item.ips = new ArrayList<>(ips);
+            }
             saveItems(items);
         }
     }
@@ -168,7 +174,7 @@ final class BackupStore {
                 item.currentArchiveId = archiveId;
                 item.availableOn = WeekSchedule.nextControlDate(now, weekday(), TimeZone.getDefault());
                 List<ArchiveEntry> entries = loadArchive();
-                entries.add(new ArchiveEntry(archiveId, item.id, item.name, now));
+                entries.add(new ArchiveEntry(archiveId, item.id, item.name, now, item.ips));
                 prefs.edit().putString("items", encodeItems(items)).putString("archive", encodeArchive(entries))
                         .putLong("nextArchiveId", archiveId + 1).commit();
                 return;
@@ -258,7 +264,7 @@ final class BackupStore {
         for (BackupItem item : items) {
             if (!item.checked) continue;
             // Older versions did not store completion timestamps: never invent one.
-            entries.add(new ArchiveEntry(nextId, item.id, item.name, 0));
+            entries.add(new ArchiveEntry(nextId, item.id, item.name, 0, item.ips));
             if (previousCyclePassed) makeActive(item);
             else {
                 item.currentArchiveId = nextId;
