@@ -209,6 +209,15 @@ def main():
     open_archive()
     assert_archive_record()
     scroll_to(text="НАПОМИНАНИЕ ОБ ОШИБКЕ")
+    items, _ = saved_state()
+    archived_id = next(item["id"] for item in items if item.get("name") == "CI_Server")
+    # The intent used by an error notification must open the archived task and
+    # its reminder, not silently return to an empty checklist.
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity",
+        "--ei", "item_id", str(archived_id), "--ez", "open_error", "true")
+    if wait_for(text="Напомнить об ошибке") is None:
+        raise AssertionError("Error notification did not open the archived reminder")
+    click(wait_for(text="Отмена", exact=True))
 
     # Undo an accidental completion, then complete the task again.
     _, undo = scroll_to(description="Отменить выполнение: CI_Server")
