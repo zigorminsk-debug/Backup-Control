@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the real Android UI on the Actions emulator without test dependencies."""
+import os
 import re
 import subprocess
 import sys
@@ -97,14 +98,6 @@ def capture():
     output = Path("ui-smoke.png")
     with output.open("wb") as out:
         subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=out, check=True)
-    # Preview conversion is optional; the PNG artifact is always available.
-    try:
-        from PIL import Image
-        with Image.open(output) as image:
-            image.thumbnail((360, 1000))
-            image.convert("RGB").save("ui-smoke-preview.jpg", quality=65, optimize=True)
-    except (ImportError, OSError) as error:
-        print("Preview conversion skipped:", error)
 
 
 def main():
@@ -169,6 +162,21 @@ def main():
     if PACKAGE not in alarms:
         raise AssertionError("No Android alarms registered for the app")
 
+    # An update signed with the same key must install over the old package
+    # without losing its checklist or unresolved reminder.
+    before = re.search(r"versionCode=(\d+)", adb("shell", "dumpsys", "package", PACKAGE))
+    if before is None:
+        raise AssertionError("Cannot read installed version")
+    update_apk = str(Path(os.environ["RUNNER_TEMP"], "updated-debug.apk"))
+    adb("install", "-r", update_apk)
+    after = re.search(r"versionCode=(\d+)", adb("shell", "dumpsys", "package", PACKAGE))
+    if after is None or int(after.group(1)) <= int(before.group(1)):
+        raise AssertionError("The second APK did not increase the version code")
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    time.sleep(2)
+    scroll_to(description="Проверено: CI_Server")
+    scroll_to(text="НАПОМИНАНИЕ")
+
     # Move the emulator clock ahead by eight days. On the next launch the app
     # must reset weekly checks and deliver the missed error reminder, even if
     # the process was stopped while the scheduled time passed.
@@ -182,7 +190,7 @@ def main():
     time.sleep(3)
     scroll_to(description="Отметить проверенным: CI_Server")
     scroll_to(text="НАПОМИНАНИЕ ОТПРАВЛЕНО")
-    print("PASS: launch, checklist persistence, scheduled alarms, weekly reset and overdue error notification")
+    print("PASS: checklist persistence, same-key upgrade, scheduled alarms, weekly reset and overdue reminder")
 
 
 if __name__ == "__main__":

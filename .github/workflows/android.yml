@@ -119,12 +119,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # A push to the default branch publishes an update. A manual run can
-      # explicitly publish from another ref, useful for a first release.
+      # Default-branch pushes publish automatically. A signed branch build
+      # can be explicitly published before merging with [publish-release].
       - name: Publish GitHub Release
         if: >-
           steps.signing.outputs.ready == 'true' &&
-          ((github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) ||
+          ((github.event_name == 'push' &&
+            (github.ref_name == github.event.repository.default_branch ||
+             contains(github.event.head_commit.message, '[publish-release]'))) ||
           (github.event_name == 'workflow_dispatch' && inputs.publish))
         env:
           GH_TOKEN: ${{ github.token }}
@@ -150,10 +152,13 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
-      - name: Build debug APK for emulator
-        run: ./gradlew --no-daemon assembleDebug
-      - name: Install screenshot tooling
-        run: python3 -m pip install --user --break-system-packages Pillow
+      - name: Build two debug APK versions with the same test key
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/initial-debug.apk"
+          GITHUB_RUN_NUMBER="$((GITHUB_RUN_NUMBER + 1))" ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/updated-debug.apk"
+          cp "$RUNNER_TEMP/initial-debug.apk" app/build/outputs/apk/debug/app-debug.apk
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
