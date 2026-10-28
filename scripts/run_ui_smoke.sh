@@ -3,7 +3,7 @@ set -euo pipefail
 emit_preview() {
   # Contains only sample data; the full screenshot is also saved as an artifact.
   if [ -f ui-smoke-preview.jpg ]; then
-    python3 -c 'import base64; s=base64.b64encode(open("ui-smoke-preview.jpg", "rb").read()).decode(); print("::notice title=UI preview::" + s if len(s) < 55000 else "Preview too large for annotation")'
+    python3 -c 'import base64; s=base64.b64encode(open("ui-smoke-preview.jpg", "rb").read()).decode(); [print("::notice title=UI-preview-%03d::%s" % (i//3000, s[i:i+3000])) for i in range(0,len(s),3000)]'
   fi
 }
 if ! python3 scripts/smoke_android.py > "$RUNNER_TEMP/ui-smoke.log" 2>&1; then

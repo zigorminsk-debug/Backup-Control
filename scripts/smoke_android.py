@@ -27,13 +27,16 @@ def find(root, text=None, description=None, exact=False):
     for node in root.iter("node"):
         val = node.get("text", "") if text is not None else node.get("content-desc", "")
         needle = text if text is not None else description
-        if (val == needle if exact else needle in val) and node.get("bounds"):
+        if (val.casefold() == needle.casefold() if exact else needle.casefold() in val.casefold()) and node.get("bounds"):
             return node
     return None
 
 
 def click(node):
     if node is None:
+        root = tree()
+        print("Visible controls:", [(n.get("text"), n.get("content-desc"), n.get("bounds"))
+                                    for n in root.iter("node") if n.get("text") or n.get("content-desc")])
         raise AssertionError("Expected UI control was not found")
     coordinates = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
     if len(coordinates) != 4:
