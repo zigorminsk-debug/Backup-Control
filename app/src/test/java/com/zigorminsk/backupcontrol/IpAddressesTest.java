@@ -64,6 +64,22 @@ public class IpAddressesTest {
         assertFalse(IpAddresses.isValid(null));
     }
 
+    @Test public void addressIsFormedWhileTypingDigitByDigit() {
+        // The dialog formats the field after every keystroke, so only the
+        // incremental result matters to the user.
+        String typed = "";
+        for (char digit : "9999999999".toCharArray()) typed = IpAddresses.formatInput(typed + digit);
+        assertEquals("99.99.99.99", typed);
+        assertEquals("192.168.0.0", IpAddresses.formatInput("19216800"));
+    }
+
+    @Test public void formattingNeverDriftsWhenAppliedAgain() {
+        for (String value : new String[]{"0", "8", "192.168.1.10", "25.62.56.252",
+                "192.168.110", "99.99.99.99", "255.255.255.255"}) {
+            assertEquals(value, IpAddresses.formatInput(IpAddresses.formatInput(value)));
+        }
+    }
+
     @Test public void joinsSeveralAddresses() {
         assertEquals("10.0.0.1 · 10.0.0.2",
                 IpAddresses.join(Arrays.asList("10.0.0.1", "10.0.0.2")));

@@ -126,7 +126,7 @@ def assert_hidden_and_saved():
     if not task or not task.get("checked") or not any(entry.get("itemId") == task.get("id")
             and entry.get("completedAt", 0) > 0 for entry in entries):
         raise AssertionError("Completed task and its timestamp were not persisted")
-    expected_ips = ["25.62.56.25", "99.99.99.99"]
+    expected_ips = ["25.62.56.252", "99.99.99.99"]
     if task.get("ips") != expected_ips:
         raise AssertionError("IP addresses were not saved: " + str(task.get("ips")))
     if not any(entry.get("itemId") == task.get("id") and entry.get("ips") == expected_ips
@@ -228,8 +228,8 @@ def main():
     tap_fresh(description=IP_FIELD, exact=True)
     clear_focused_field()
     # Plain digits: the field has to insert the dots itself. 256 cannot be an
-    # octet, so the digits form the valid four-octet address 25.62.56.25.
-    type_ip("256256256256", "25.62.56.25")
+    # octet, so typing those digits forms the four-octet address 25.62.56.252.
+    type_ip("256256256256", "25.62.56.252")
     # A second machine: the plus button appends another address row, and digits
     # without separators are formed into an address by the field itself.
     tap_fresh(description="Добавить ещё один адрес", exact=True)
@@ -239,10 +239,10 @@ def main():
                              + str(describe_fields()))
     click(fields[-1])
     type_ip("9999999999", "99.99.99.99")
-    if [n.get("text", "") for n in ip_fields()] != ["25.62.56.25", "99.99.99.99"]:
+    if [n.get("text", "") for n in ip_fields()] != ["25.62.56.252", "99.99.99.99"]:
         raise AssertionError("IP rows are wrong after typing: " + str(describe_fields()))
     tap_fresh(text="Добавить", exact=True)
-    root, _ = scroll_to(text="25.62.56.25 · 99.99.99.99")
+    root, _ = scroll_to(text="25.62.56.252 · 99.99.99.99")
     # Schedule an error reminder before completing the task. It must remain
     # accessible even when the task has moved to the archive.
     root, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
