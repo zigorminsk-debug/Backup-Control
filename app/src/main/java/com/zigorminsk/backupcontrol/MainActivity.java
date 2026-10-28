@@ -26,6 +26,7 @@ import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.text.TextWatcher;
+import android.text.method.DigitsKeyListener;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -863,6 +864,9 @@ public final class MainActivity extends Activity {
         // the '.' key on keyboards that hide it, and the text watcher inserts
         // dots itself so the address is formed while typing.
         field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        // Accept an explicit '.' as well: hardware keyboards and automated input
+        // deliver it as its own key, which the plain numeric filter drops.
+        field.setKeyListener(DigitsKeyListener.getInstance("0123456789."));
         field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(15)});
         field.setText(value);
         field.setSelection(field.length());

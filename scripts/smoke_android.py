@@ -126,7 +126,7 @@ def assert_hidden_and_saved():
     if not task or not task.get("checked") or not any(entry.get("itemId") == task.get("id")
             and entry.get("completedAt", 0) > 0 for entry in entries):
         raise AssertionError("Completed task and its timestamp were not persisted")
-    expected_ips = ["192.168.1.10", "192.168.0.0"]
+    expected_ips = ["25.62.56.25", "99.99.99.99"]
     if task.get("ips") != expected_ips:
         raise AssertionError("IP addresses were not saved: " + str(task.get("ips")))
     if not any(entry.get("itemId") == task.get("id") and entry.get("ips") == expected_ips
@@ -211,9 +211,11 @@ def main():
     adb("shell", "input", "text", "CI_Server")
     tap_fresh(description=IP_FIELD, exact=True)
     clear_focused_field()
-    adb("shell", "input", "text", "192.168.1.10")
-    if [n.get("text", "") for n in ip_fields()] != ["192.168.1.10"]:
-        raise AssertionError("A typed IP address was altered: " + str(describe_fields()))
+    # Plain digits: the field has to insert the dots itself. 256 cannot be an
+    # octet, so the digits form the valid four-octet address 25.62.56.25.
+    adb("shell", "input", "text", "256256256256")
+    if [n.get("text", "") for n in ip_fields()] != ["25.62.56.25"]:
+        raise AssertionError("Digits were not formed into an IP address: " + str(describe_fields()))
     # A second machine: the plus button appends another address row, and digits
     # without separators are formed into an address by the field itself.
     tap_fresh(description="Добавить ещё один адрес", exact=True)
@@ -223,12 +225,12 @@ def main():
                              + str(describe_fields()))
     click(fields[-1])
     clear_focused_field()
-    adb("shell", "input", "text", "19216800")
+    adb("shell", "input", "text", "9999999999")
     addresses = [n.get("text", "") for n in ip_fields()]
-    if addresses != ["192.168.1.10", "192.168.0.0"]:
+    if addresses != ["25.62.56.25", "99.99.99.99"]:
         raise AssertionError("IP rows are wrong after typing: " + str(describe_fields()))
     tap_fresh(text="Добавить", exact=True)
-    root, _ = scroll_to(text="192.168.1.10 · 192.168.0.0")
+    root, _ = scroll_to(text="25.62.56.25 · 99.99.99.99")
     # Schedule an error reminder before completing the task. It must remain
     # accessible even when the task has moved to the archive.
     root, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
