@@ -7,6 +7,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 
+import java.util.ArrayList;
+import java.util.List;
+
 final class ReminderScheduler {
     static final String WEEKLY = "com.zigorminsk.backupcontrol.WEEKLY";
     static final String ERROR = "com.zigorminsk.backupcontrol.ERROR";
@@ -41,8 +44,23 @@ final class ReminderScheduler {
     }
 
     static void rescheduleAll(Context context) {
+        BackupStore store = new BackupStore(context);
+        store.syncCycle();
+        deliverWeeklyIfDue(context);
         scheduleWeekly(context);
-        for (BackupItem item : new BackupStore(context).items()) scheduleError(context, item);
+        for (BackupItem item : store.items()) scheduleError(context, item);
+    }
+
+    static void deliverWeeklyIfDue(Context context) {
+        BackupStore store = new BackupStore(context);
+        store.syncCycle();
+        String cycle = store.unnotifiedWeeklyCycle();
+        if (cycle == null) return;
+        List<BackupItem> pending = new ArrayList<>();
+        for (BackupItem item : store.items()) if (!item.checked) pending.add(item);
+        // If permission is disabled, leave the cycle pending and deliver when
+        // notifications are enabled. No reminder is needed if all tasks are done.
+        if (pending.isEmpty() || Notifications.weekly(context, pending)) store.markWeeklyNotified(cycle);
     }
 
     static void deliverError(Context context, int id) {

@@ -29,6 +29,40 @@ public final class WeekSchedule {
                 candidate.get(Calendar.MONTH) + 1, candidate.get(Calendar.DAY_OF_MONTH));
     }
 
+    /** Local date of the next selected weekday, strictly after today's date. */
+    public static String nextControlDate(long now, int weekday, TimeZone zone) {
+        if (weekday < Calendar.SUNDAY || weekday > Calendar.SATURDAY) {
+            throw new IllegalArgumentException("Invalid weekday");
+        }
+        Calendar date = Calendar.getInstance(zone, Locale.ROOT);
+        date.setTimeInMillis(now);
+        int days = (weekday - date.get(Calendar.DAY_OF_WEEK) + 7) % 7;
+        if (days == 0) days = 7;
+        date.set(Calendar.HOUR_OF_DAY, 12);
+        date.set(Calendar.MINUTE, 0);
+        date.set(Calendar.SECOND, 0);
+        date.set(Calendar.MILLISECOND, 0);
+        date.add(Calendar.DAY_OF_MONTH, days);
+        return dateKey(date);
+    }
+
+    public static String localDateKey(long instant, TimeZone zone) {
+        Calendar date = Calendar.getInstance(zone, Locale.ROOT);
+        date.setTimeInMillis(instant);
+        return dateKey(date);
+    }
+
+    public static boolean isControlDay(long instant, int weekday, TimeZone zone) {
+        Calendar date = Calendar.getInstance(zone, Locale.ROOT);
+        date.setTimeInMillis(instant);
+        return date.get(Calendar.DAY_OF_WEEK) == weekday;
+    }
+
+    private static String dateKey(Calendar date) {
+        return String.format(Locale.ROOT, "%04d-%02d-%02d", date.get(Calendar.YEAR),
+                date.get(Calendar.MONTH) + 1, date.get(Calendar.DAY_OF_MONTH));
+    }
+
     private static Calendar candidateForThisWeek(long now, int weekday, int hour, int minute, TimeZone zone) {
         if (weekday < Calendar.SUNDAY || weekday > Calendar.SATURDAY
                 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {

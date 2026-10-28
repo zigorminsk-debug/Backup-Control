@@ -4,4 +4,8 @@
         android:name=".UpdateVerificationInstrumentation"
         android:targetPackage="com.zigorminsk.backupcontrol"
         android:label="Update signature verification test" />
+    <instrumentation
+        android:name=".ArchiveVerificationInstrumentation"
+        android:targetPackage="com.zigorminsk.backupcontrol"
+        android:label="Archive and scheduling test" />
 </manifest>

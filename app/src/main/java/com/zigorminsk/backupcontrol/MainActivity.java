@@ -68,6 +68,7 @@ public final class MainActivity extends Activity {
     private View statusSpace;
     private View navSpace;
     private boolean pendingInstall;
+    private boolean showingArchive;
     private boolean registered;
     private boolean resumed;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
@@ -79,6 +80,7 @@ public final class MainActivity extends Activity {
         }
     };
     private final Map<Integer, View> itemViews = new HashMap<>();
+    private final Map<Long, View> archiveViews = new HashMap<>();
     private final BroadcastReceiver changes = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             render();
@@ -88,7 +90,10 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (state != null) pendingInstall = state.getBoolean("pendingInstall", false);
+        if (state != null) {
+            pendingInstall = state.getBoolean("pendingInstall", false);
+            showingArchive = state.getBoolean("showingArchive", false);
+        }
         store = new BackupStore(this);
         Notifications.createChannels(this);
         buildShell();
@@ -114,7 +119,6 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        if (store.syncCycle()) Notifications.weekly(this);
         ReminderScheduler.rescheduleAll(this);
         render();
         scheduleCycleTick();
@@ -137,7 +141,7 @@ public final class MainActivity extends Activity {
 
     private void scheduleCycleTick() {
         uiHandler.removeCallbacks(cycleTick);
-        long delay = Math.max(250, store.nextControl() - System.currentTimeMillis() + 250);
+        long delay = Math.max(250, store.nextControlDayStart() - System.currentTimeMillis() + 250);
         uiHandler.postDelayed(cycleTick, delay);
     }
 
@@ -149,6 +153,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean("pendingInstall", pendingInstall);
+        outState.putBoolean("showingArchive", showingArchive);
         super.onSaveInstanceState(outState);
     }
 
@@ -165,16 +170,25 @@ public final class MainActivity extends Activity {
             scroll.post(this::showUpdateDialog);
         }
         int id = intent.getIntExtra("item_id", 0);
+        boolean openError = intent.getBooleanExtra("open_error", false);
         if (id != 0) {
             intent.removeExtra("item_id");
+            intent.removeExtra("open_error");
+            BackupItem item = store.item(id);
+            if (item == null) return;
+            showingArchive = item.checked;
+            scroll.scrollTo(0, 0);
+            render();
             scroll.post(() -> {
-                View view = itemViews.get(id);
+                View view = item.checked ? archiveViews.get(item.currentArchiveId) : itemViews.get(id);
                 if (view != null) {
                     Rect rect = new Rect();
                     view.getDrawingRect(rect);
                     content.offsetDescendantRectToMyCoords(view, rect);
                     scroll.smoothScrollTo(0, Math.max(0, rect.top - dp(16)));
                 }
+                // A reminder remains actionable after its task is archived.
+                if (item.checked && openError) showReminder(item);
             });
         }
     }
@@ -235,6 +249,11 @@ public final class MainActivity extends Activity {
         int oldY = scroll.getScrollY();
         content.removeAllViews();
         itemViews.clear();
+        archiveViews.clear();
+        if (showingArchive) {
+            renderArchive(oldY);
+            return;
+        }
         List<BackupItem> items = store.items();
         int done = 0;
         int openErrors = 0;
@@ -283,8 +302,20 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(8);
             empty.addView(hint, hp);
             body.addView(empty, matchWrap());
+        } else if (done == items.size()) {
+            LinearLayout empty = card();
+            empty.setPadding(dp(18), dp(20), dp(18), dp(16));
+            empty.addView(text("Все задачи выполнены", 16, INK, true));
+            TextView hint = text("Они в архиве и вернутся в список в назначенный день.", 13, MUTED, false);
+            LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(8);
+            empty.addView(hint, hp);
+            TextView archive = smallLink("Открыть архив  →", GREEN_DARK);
+            archive.setOnClickListener(v -> openArchive());
+            empty.addView(archive, matchWrap());
+            body.addView(empty, matchWrap());
         } else {
             for (BackupItem item : items) {
+                if (item.checked) continue;
                 View card = itemCard(item);
                 itemViews.put(item.id, card);
                 body.addView(card, matchWrap());
@@ -305,6 +336,158 @@ public final class MainActivity extends Activity {
         scroll.post(() -> scroll.scrollTo(0, oldY));
     }
 
+    private void openArchive() {
+        showingArchive = true;
+        scroll.scrollTo(0, 0);
+        render();
+    }
+
+    private void openChecklist() {
+        showingArchive = false;
+        scroll.scrollTo(0, 0);
+        render();
+    }
+
+    @Override public void onBackPressed() {
+        if (showingArchive) openChecklist();
+        else super.onBackPressed();
+    }
+
+    private void renderArchive(int oldY) {
+        List<ArchiveEntry> entries = store.archive();
+        LinearLayout top = vertical();
+        top.setBackgroundColor(NAVY);
+        top.setPadding(dp(22), dp(16), dp(22), dp(24));
+        TextView back = button("←  К списку", 0xffc9efdd, NAVY_CARD, 12);
+        back.setContentDescription("Вернуться к списку задач");
+        back.setOnClickListener(v -> openChecklist());
+        top.addView(back, wrapWrap());
+        TextView eyebrow = text("ИСТОРИЯ ПРОВЕРОК", 10, 0xffa6d9c7, true);
+        eyebrow.setLetterSpacing(.10f);
+        LinearLayout.LayoutParams ep = matchWrap(); ep.topMargin = dp(26);
+        top.addView(eyebrow, ep);
+        TextView title = text("Архив выполнений", 27, Color.WHITE, true);
+        LinearLayout.LayoutParams tp = matchWrap(); tp.topMargin = dp(8);
+        top.addView(title, tp);
+        TextView subtitle = text("Здесь сохраняются дата и время каждой проверки.", 14, 0xffb1c6c5, false);
+        subtitle.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams sp = matchWrap(); sp.topMargin = dp(9);
+        top.addView(subtitle, sp);
+        content.addView(top, matchWrap());
+
+        LinearLayout body = vertical();
+        body.setPadding(dp(20), dp(22), dp(20), dp(32));
+        content.addView(body, matchWrap());
+        TextView count = text("ЗАПИСЕЙ В АРХИВЕ  ·  " + entries.size(), 10, MUTED, true);
+        count.setLetterSpacing(.08f);
+        body.addView(count);
+        body.addView(space(14));
+        if (entries.isEmpty()) {
+            LinearLayout empty = card();
+            empty.setPadding(dp(18), dp(21), dp(18), dp(21));
+            empty.addView(text("Пока нет выполненных задач", 16, INK, true));
+            TextView hint = text("Отметьте задачу в чек-листе — она появится здесь вместе с датой и временем.", 13, MUTED, false);
+            hint.setLineSpacing(dp(2), 1f);
+            LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(8);
+            empty.addView(hint, hp);
+            body.addView(empty, matchWrap());
+        } else {
+            for (int i = entries.size() - 1; i >= 0; i--) {
+                ArchiveEntry entry = entries.get(i);
+                View card = archiveCard(entry);
+                archiveViews.put(entry.id, card);
+                body.addView(card, matchWrap());
+                body.addView(space(10));
+            }
+        }
+        scroll.post(() -> scroll.scrollTo(0, oldY));
+    }
+
+    private View archiveCard(ArchiveEntry entry) {
+        BackupItem current = store.item(entry.itemId);
+        boolean awaiting = current != null && current.checked && current.currentArchiveId == entry.id;
+        LinearLayout card = card();
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView icon = text("✓", 16, GREEN_DARK, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(round(MINT, 10));
+        row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        LinearLayout copy = vertical();
+        TextView name = text(entry.itemName, 15, INK, true);
+        name.setMaxLines(3);
+        copy.addView(name);
+        String completed = entry.completedAt > 0
+                ? "Выполнено " + new SimpleDateFormat("d MMMM yyyy, HH:mm", RU).format(entry.completedAt)
+                : "Дата выполнения не сохранена в прежней версии";
+        TextView date = text(completed, 12, MUTED, false);
+        LinearLayout.LayoutParams dp = matchWrap(); dp.topMargin = dp(5);
+        copy.addView(date, dp);
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
+        copyParams.leftMargin = dp(12);
+        row.addView(copy, copyParams);
+        if (!awaiting) {
+            TextView remove = text("•••", 18, MUTED, true);
+            remove.setGravity(Gravity.CENTER);
+            remove.setFocusable(true);
+            remove.setContentDescription("Удалить запись из архива: " + entry.itemName);
+            remove.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Удалить запись?")
+                    .setMessage("Из архива будет удалена только эта запись о выполнении.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Удалить", (dialog, which) -> {
+                        store.deleteArchiveEntry(entry.id);
+                        render();
+                    }).show());
+            row.addView(remove, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        }
+        card.addView(row, matchWrap());
+        if (awaiting) {
+            TextView due = text("В списке снова " + displayDateKey(current.availableOn), 12, GREEN_DARK, true);
+            LinearLayout.LayoutParams dueParams = matchWrap(); dueParams.topMargin = dp(13);
+            card.addView(due, dueParams);
+            TextView undo = smallLink("Вернуть в список", GREEN_DARK);
+            undo.setContentDescription("Отменить выполнение: " + entry.itemName);
+            undo.setOnClickListener(v -> {
+                if (store.undoCompletion(entry.id)) {
+                    openChecklist();
+                    toast("Задача возвращена в список");
+                } else {
+                    render();
+                }
+            });
+            card.addView(undo, matchWrap());
+            if (current.reminderAt > 0) {
+                LinearLayout reminder = vertical();
+                reminder.setPadding(dp(12), dp(10), dp(12), dp(4));
+                reminder.setBackground(round(AMBER_BG, 12));
+                String label = current.reminderDelivered ? "НАПОМИНАНИЕ ОТПРАВЛЕНО" : "НАПОМИНАНИЕ ОБ ОШИБКЕ";
+                reminder.addView(text(label + "  ·  " + shortDate(current.reminderAt), 10, AMBER_TEXT, true));
+                String note = current.reminderNote.isEmpty() ? "Разобраться с ошибкой" : current.reminderNote;
+                TextView details = text(note, 13, INK, true);
+                LinearLayout.LayoutParams noteParams = matchWrap(); noteParams.topMargin = dp(5);
+                reminder.addView(details, noteParams);
+                TextView edit = smallLink(current.reminderDelivered ? "Разобраться / закрыть" : "Изменить напоминание", AMBER_TEXT);
+                edit.setOnClickListener(v -> showReminder(current));
+                reminder.addView(edit, matchWrap());
+                LinearLayout.LayoutParams rp = matchWrap(); rp.topMargin = dp(4);
+                card.addView(reminder, rp);
+            }
+        }
+        return card;
+    }
+
+    private String displayDateKey(String date) {
+        if (date == null || date.isEmpty()) return "в назначенный день";
+        try {
+            SimpleDateFormat input = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+            input.setLenient(false);
+            return new SimpleDateFormat("d MMMM", RU).format(input.parse(date));
+        } catch (java.text.ParseException e) {
+            return "в назначенный день";
+        }
+    }
+
     private View header() {
         LinearLayout header = vertical();
         header.setBackgroundColor(NAVY);
@@ -319,10 +502,12 @@ public final class MainActivity extends Activity {
         brandName.setLetterSpacing(.13f);
         LinearLayout.LayoutParams bp = wrapWrap(); bp.leftMargin = dp(10);
         brand.addView(brandName, bp);
-        TextView brandNote = text("ЛИЧНЫЙ КОНТРОЛЬ", 9, 0xff8da9aa, true);
-        brandNote.setLetterSpacing(.08f);
-        brandNote.setGravity(Gravity.END);
-        brand.addView(brandNote, new LinearLayout.LayoutParams(0, -2, 1));
+        View spacer = new View(this);
+        brand.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
+        TextView archive = button("Архив", 0xffc9efdd, NAVY_CARD, 12);
+        archive.setContentDescription("Открыть архив выполненных задач");
+        archive.setOnClickListener(v -> openArchive());
+        brand.addView(archive);
         header.addView(brand, matchWrap());
 
         TextView title = text("Ваши бэкапы\nпод контролем.", 28, Color.WHITE, true);
@@ -420,8 +605,11 @@ public final class MainActivity extends Activity {
         check.setChecked(item.checked);
         check.setContentDescription((item.checked ? "Проверено: " : "Отметить проверенным: ") + item.name);
         check.setOnCheckedChangeListener((button, checked) -> {
-            store.setChecked(item.id, checked);
+            if (!checked) return;
+            store.setChecked(item.id, true);
+            Notifications.cancelWeeklyTask(this, item.id);
             render();
+            toast("Задача перенесена в архив");
         });
         row.addView(check, new LinearLayout.LayoutParams(dp(44), dp(48)));
         LinearLayout label = vertical();
@@ -489,7 +677,7 @@ public final class MainActivity extends Activity {
         box.setPadding(dp(17), dp(16), dp(17), dp(16));
         box.setBackground(round(0xffe8f3ed, 15));
         box.addView(text("Спокойствие по расписанию", 14, GREEN_DARK, true));
-        TextView detail = text("Каждую неделю отметки сбрасываются. Напоминания об ошибках останутся, пока вы их не закроете.", 13, 0xff5b7770, false);
+        TextView detail = text("Выполненные задачи попадают в архив и возвращаются в список в назначенный день. Напоминания об ошибках сохраняются.", 13, 0xff5b7770, false);
         detail.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams p = matchWrap(); p.topMargin = dp(7);
         box.addView(detail, p);
@@ -541,7 +729,7 @@ public final class MainActivity extends Activity {
             chosen[0] = hour; chosen[1] = minute; timeButton.setText(time(hour, minute));
         }, chosen[0], chosen[1], true).show());
         form.addView(timeButton, matchWrap());
-        TextView hint = text("В это время откроется новая неделя проверок, а приложение пришлёт уведомление.", 13, MUTED, false);
+        TextView hint = text("Задачи вернутся в список с начала выбранного дня. В указанное время придут уведомления о невыполненных задачах.", 13, MUTED, false);
         hint.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(12);
         form.addView(hint, hp);
@@ -589,6 +777,7 @@ public final class MainActivity extends Activity {
                             .setPositiveButton("Удалить", (d, w) -> {
                                 ReminderScheduler.cancelError(this, item.id);
                                 store.remove(item.id);
+                                Notifications.cancelWeeklyTask(this, item.id);
                                 render();
                             }).show();
                 }).show();
@@ -643,7 +832,7 @@ public final class MainActivity extends Activity {
         form.addView(timeButton, matchWrap());
         AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle("Напомнить об ошибке")
                 .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Сохранить", null);
-        if (item.reminderAt > 0) builder.setNeutralButton("Удалить", (dialog, which) -> {
+        if (item.reminderAt > 0) builder.setNeutralButton(item.reminderDelivered ? "Решено" : "Удалить", (dialog, which) -> {
             ReminderScheduler.cancelError(this, item.id);
             store.clearReminder(item.id);
             render();

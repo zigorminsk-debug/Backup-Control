@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Exercise the real Android UI on the Actions emulator without test dependencies."""
+import json
 import os
 import re
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 PACKAGE = "com.zigorminsk.backupcontrol"
 APK = "app/build/outputs/apk/debug/app-debug.apk"
@@ -71,9 +74,9 @@ def swipe(up=True):
     time.sleep(.7)
 
 
-def scroll_to(text=None, description=None):
+def scroll_to(text=None, description=None, prefer_down=True):
     root = None
-    for direction in (True, False):
+    for direction in (prefer_down, not prefer_down):
         for _ in range(8):
             root = tree()
             result = find(root, text=text, description=description)
@@ -84,6 +87,45 @@ def scroll_to(text=None, description=None):
         print("Visible controls:", [(n.get("text"), n.get("content-desc"), n.get("bounds"))
                                     for n in root.iter("node") if n.get("text") or n.get("content-desc")])
     raise AssertionError("Could not scroll to " + str(text or description))
+
+
+def open_archive():
+    if find(tree(), text="Архив выполнений") is not None:
+        return
+    _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
+    click(button)
+    if wait_for(text="Архив выполнений") is None:
+        raise AssertionError("Archive screen did not open")
+
+
+def open_checklist():
+    if find(tree(), text="Архив выполнений") is not None:
+        click(wait_for(description="Вернуться к списку задач"))
+
+
+def assert_archive_record():
+    root, _ = scroll_to(text="CI_Server")
+    timestamp = find(root, text="Выполнено ")
+    if timestamp is None or not re.search(r"\d{1,2}:\d{2}", timestamp.get("text", "")):
+        raise AssertionError("Archive does not show the completion date and time")
+
+
+def saved_state():
+    raw = adb("shell", "run-as", PACKAGE, "cat", "shared_prefs/backup_control.xml")
+    preferences = ET.fromstring(raw)
+    values = {node.get("name"): node.text for node in preferences if node.tag == "string"}
+    return json.loads(values.get("items", "[]")), json.loads(values.get("archive", "[]"))
+
+
+def assert_hidden_and_saved():
+    root = tree()
+    if find(root, description="Отметить проверенным: CI_Server") is not None or find(root, text="CI_Server", exact=True) is not None:
+        raise AssertionError("Completed task is still visible in the checklist")
+    items, entries = saved_state()
+    task = next((item for item in items if item.get("name") == "CI_Server"), None)
+    if not task or not task.get("checked") or not any(entry.get("itemId") == task.get("id")
+            and entry.get("completedAt", 0) > 0 for entry in entries):
+        raise AssertionError("Completed task and its timestamp were not persisted")
 
 
 def allow_notifications_if_asked():
@@ -102,6 +144,8 @@ def capture():
 
 def main():
     adb("install", "-r", APK)
+    # Test exact delivery, rather than Android's intentionally deferred fallback.
+    adb("shell", "appops", "set", PACKAGE, "SCHEDULE_EXACT_ALARM", "allow")
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
     # Exercise the production updater's APK verifier on an actual device: an
     # update with the same key must pass, a different signer must fail.
@@ -112,6 +156,9 @@ def main():
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.UpdateVerificationInstrumentation")
     if "signature_check=PASS" not in result:
         raise AssertionError("Update signature verification failed: " + result)
+    result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
+    if "archive_check=PASS" not in result:
+        raise AssertionError("Archive and recurrence verification failed: " + result)
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
     time.sleep(3)
     if not adb("shell", "pidof", PACKAGE).strip():
@@ -129,21 +176,11 @@ def main():
     click(wait_for(klass="android.widget.EditText"))
     adb("shell", "input", "text", "CI_Server")
     click(wait_for(text="Добавить", exact=True))
-    _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
-    click(checkbox)
-    _, checked = scroll_to(description="Проверено: CI_Server")
-    if checked is None:
-        raise AssertionError("Checkbox was not saved")
-
-    # Close and reopen the process: checklist state must survive.
-    adb("shell", "am", "force-stop", PACKAGE)
-    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
-    time.sleep(2)
-    root, checked = scroll_to(description="Проверено: CI_Server")
-
-    # Find the reminder action belonging to this item (not a neighbouring item).
+    # Schedule an error reminder before completing the task. It must remain
+    # accessible even when the task has moved to the archive.
+    root, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
     parents = {child: parent for parent in root.iter() for child in parent}
-    node = checked
+    node = checkbox
     reminder = None
     while node in parents:
         node = parents[node]
@@ -151,12 +188,11 @@ def main():
         if reminder is not None:
             break
     if reminder is None:
-        # The action may be just below the visible edge.
         swipe(True)
         root = tree()
-        checked = find(root, description="Проверено: CI_Server")
+        checkbox = find(root, description="Отметить проверенным: CI_Server")
         parents = {child: parent for parent in root.iter() for child in parent}
-        node = checked
+        node = checkbox
         while node in parents:
             node = parents[node]
             reminder = find(node, text="Напомнить об ошибке")
@@ -167,9 +203,28 @@ def main():
         raise AssertionError("Reminder dialog did not open")
     click(wait_for(text="Сохранить", exact=True))
     allow_notifications_if_asked()
-    _, reminder_label = scroll_to(text="НАПОМИНАНИЕ")
-    if reminder_label is None:
-        raise AssertionError("Reminder was not saved")
+    _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
+    click(checkbox)
+    assert_hidden_and_saved()
+    open_archive()
+    assert_archive_record()
+    scroll_to(text="НАПОМИНАНИЕ ОБ ОШИБКЕ")
+
+    # Undo an accidental completion, then complete the task again.
+    _, undo = scroll_to(description="Отменить выполнение: CI_Server")
+    click(undo)
+    _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
+    click(checkbox)
+    open_archive()
+    assert_archive_record()
+
+    # Close and reopen the process: the archive and reminder must persist.
+    adb("shell", "am", "force-stop", PACKAGE)
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    time.sleep(2)
+    open_archive()
+    assert_archive_record()
+    scroll_to(text="НАПОМИНАНИЕ ОБ ОШИБКЕ")
     alarms = adb("shell", "dumpsys", "alarm")
     if PACKAGE not in alarms:
         raise AssertionError("No Android alarms registered for the app")
@@ -186,23 +241,65 @@ def main():
         raise AssertionError("The second APK did not increase the version code")
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
     time.sleep(2)
-    scroll_to(description="Проверено: CI_Server")
-    scroll_to(text="НАПОМИНАНИЕ")
+    open_archive()
+    assert_archive_record()
+    scroll_to(text="НАПОМИНАНИЕ ОБ ОШИБКЕ")
 
-    # Move the emulator clock ahead by eight days. On the next launch the app
-    # must reset weekly checks and deliver the missed error reminder, even if
-    # the process was stopped while the scheduled time passed.
+    # Advance to Monday 00:01: the archived task must reappear at the start
+    # of the selected day, not wait until the 09:00 notification time.
     adb("root")
     adb("wait-for-device")
     adb("shell", "settings", "put", "global", "auto_time", "0")
     now = int(adb("shell", "date", "+%s").strip())
-    adb("shell", "date", "-s", "@" + str(now + 8 * 24 * 60 * 60))
+    zone_name = adb("shell", "getprop", "persist.sys.timezone").strip() or "UTC"
+    local_now = datetime.fromtimestamp(now, ZoneInfo(zone_name))
+    days_to_monday = (7 - local_now.weekday()) % 7 or 7
+    monday = (local_now + timedelta(days=days_to_monday)).replace(hour=0, minute=1, second=0, microsecond=0)
     adb("shell", "am", "force-stop", PACKAGE)
+    adb("shell", "date", "-s", "@" + str(int(monday.timestamp())))
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
     time.sleep(3)
-    scroll_to(description="Отметить проверенным: CI_Server")
+    open_checklist()
+    _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
     scroll_to(text="НАПОМИНАНИЕ ОТПРАВЛЕНО")
-    print("PASS: signature verification, same-key upgrade, checklist persistence, alarms, weekly reset and overdue reminder")
+    if "weekly_task" in adb("shell", "dumpsys", "notification", "--noredact"):
+        raise AssertionError("Weekly notification was sent before the selected time")
+
+    # Completing it before 09:00 must keep it in the archive throughout that
+    # day; the scheduled notification must mention only unfinished tasks.
+    _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
+    click(checkbox)
+    assert_hidden_and_saved()
+    at_nine = monday.replace(hour=9, minute=1)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    adb("shell", "date", "-s", "@" + str(int(at_nine.timestamp())))
+    time.sleep(5)
+    posted = adb("shell", "dumpsys", "notification", "--noredact")
+    if "weekly_task" not in posted or "Пора проверить: CI_Server" in posted:
+        raise AssertionError("Background notification did not exclude the completed task")
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    open_archive()
+    assert_archive_record()
+
+    # On the following Monday it is due again. Verify that its named
+    # notification is delivered while the app is in the background.
+    next_monday = at_nine + timedelta(days=7)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    adb("shell", "date", "-s", "@" + str(int(next_monday.timestamp())))
+    time.sleep(5)
+    posted = adb("shell", "dumpsys", "notification", "--noredact")
+    if "weekly_task" not in posted or "Пора проверить: CI_Server" not in posted:
+        raise AssertionError("Background weekly notification did not name the due task")
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    open_checklist()
+    scroll_to(description="Отметить проверенным: CI_Server")
+    open_archive()
+    assert_archive_record()
+    items, entries = saved_state()
+    task = next(item for item in items if item.get("name") == "CI_Server")
+    if len([entry for entry in entries if entry.get("itemId") == task.get("id")]) != 2:
+        raise AssertionError("Historical completion records were not retained across cycles")
+    print("PASS: archive timestamp and undo, scheduled return, task notification, error reminder and same-key upgrade")
 
 
 if __name__ == "__main__":

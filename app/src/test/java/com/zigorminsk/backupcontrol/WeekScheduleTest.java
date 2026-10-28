@@ -53,6 +53,26 @@ public class WeekScheduleTest {
                 WeekSchedule.nextOccurrence(afterJump, Calendar.SUNDAY, 2, 30, berlin));
     }
 
+    @Test public void completionOnControlDayReturnsNextWeekEvenBeforeNotification() {
+        long mondayMorning = instant(MINSK, 2026, 11, 2, 8, 0);
+        assertEquals("2026-11-09", WeekSchedule.nextControlDate(mondayMorning, Calendar.MONDAY, MINSK));
+    }
+
+    @Test public void completionBeforeControlDayReturnsOnThatDay() {
+        long sundayEvening = instant(MINSK, 2026, 11, 1, 23, 59);
+        assertEquals("2026-11-02", WeekSchedule.nextControlDate(sundayEvening, Calendar.MONDAY, MINSK));
+        assertEquals("2026-11-02", WeekSchedule.localDateKey(
+                instant(MINSK, 2026, 11, 2, 0, 0), MINSK));
+    }
+
+    @Test public void nextControlDayCrossesYearAndDaylightSaving() {
+        assertEquals("2027-01-04", WeekSchedule.nextControlDate(
+                instant(MINSK, 2026, 12, 31, 18, 0), Calendar.MONDAY, MINSK));
+        TimeZone berlin = TimeZone.getTimeZone("Europe/Berlin");
+        assertEquals("2026-03-29", WeekSchedule.nextControlDate(
+                instant(berlin, 2026, 3, 28, 23, 30), Calendar.SUNDAY, berlin));
+    }
+
     @Test public void rejectsInvalidSchedule() {
         assertThrows(IllegalArgumentException.class,
                 () -> WeekSchedule.nextOccurrence(0, 0, 9, 0, MINSK));

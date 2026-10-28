@@ -7,8 +7,7 @@ import android.content.Intent;
 public final class ReminderReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
         if (ReminderScheduler.WEEKLY.equals(intent.getAction())) {
-            new BackupStore(context).syncCycle();
-            Notifications.weekly(context);
+            ReminderScheduler.deliverWeeklyIfDue(context);
             ReminderScheduler.scheduleWeekly(context);
             AppEvents.changed(context);
         } else if (ReminderScheduler.ERROR.equals(intent.getAction())) {
