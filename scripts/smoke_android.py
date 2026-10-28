@@ -159,7 +159,21 @@ def main():
     alarms = adb("shell", "dumpsys", "alarm")
     if PACKAGE not in alarms:
         raise AssertionError("No Android alarms registered for the app")
-    print("PASS: launch, checklist add/check persistence, reminder creation and scheduled alarms")
+
+    # Move the emulator clock ahead by eight days. On the next launch the app
+    # must reset weekly checks and deliver the missed error reminder, even if
+    # the process was stopped while the scheduled time passed.
+    adb("root")
+    adb("wait-for-device")
+    adb("shell", "settings", "put", "global", "auto_time", "0")
+    now = int(adb("shell", "date", "+%s").strip())
+    adb("shell", "date", "-s", "@" + str(now + 8 * 24 * 60 * 60))
+    adb("shell", "am", "force-stop", PACKAGE)
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    time.sleep(3)
+    scroll_to(description="Отметить проверенным: CI_Server")
+    scroll_to(text="НАПОМИНАНИЕ ОТПРАВЛЕНО")
+    print("PASS: launch, checklist persistence, scheduled alarms, weekly reset and overdue error notification")
 
 
 if __name__ == "__main__":

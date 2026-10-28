@@ -248,12 +248,11 @@ public final class MainActivity extends Activity {
         content.addView(body, matchWrap());
 
         if (!Notifications.canPost(this, Notifications.CHECKS) || !Notifications.canPost(this, Notifications.ERRORS)) {
-            body.addView(notice("Уведомления выключены", "Включите их, чтобы не пропустить проверку и ошибки.",
+            body.addView(notice("Включите уведомления", "Чтобы не пропустить проверку и ошибки.",
                     "Включить", this::enableNotifications));
             body.addView(space(12));
-        }
-        if (!ReminderScheduler.exactAllowed(this)) {
-            body.addView(notice("Нужна точность", "Без разрешения Android может задержать напоминания.",
+        } else if (!ReminderScheduler.exactAllowed(this)) {
+            body.addView(notice("Нужна точность", "Иначе Android может задержать напоминания.",
                     "Разрешить", this::enableExactAlarms));
             body.addView(space(12));
         }
@@ -309,7 +308,7 @@ public final class MainActivity extends Activity {
     private View header() {
         LinearLayout header = vertical();
         header.setBackgroundColor(NAVY);
-        header.setPadding(dp(22), dp(18), dp(22), dp(24));
+        header.setPadding(dp(22), dp(16), dp(22), dp(20));
         LinearLayout brand = horizontal();
         brand.setGravity(Gravity.CENTER_VERTICAL);
         TextView mark = text("✓", 16, MINT, true);
@@ -326,17 +325,17 @@ public final class MainActivity extends Activity {
         brand.addView(brandNote, new LinearLayout.LayoutParams(0, -2, 1));
         header.addView(brand, matchWrap());
 
-        TextView title = text("Ваши бэкапы\nпод контролем.", 29, Color.WHITE, true);
+        TextView title = text("Ваши бэкапы\nпод контролем.", 28, Color.WHITE, true);
         title.setLineSpacing(dp(1), 1f);
-        LinearLayout.LayoutParams tp = matchWrap(); tp.topMargin = dp(27);
+        LinearLayout.LayoutParams tp = matchWrap(); tp.topMargin = dp(21);
         header.addView(title, tp);
         TextView subtitle = text("Регулярная проверка — спокойствие за данные.", 14, 0xffb1c6c5, false);
-        LinearLayout.LayoutParams sp = matchWrap(); sp.topMargin = dp(10);
+        LinearLayout.LayoutParams sp = matchWrap(); sp.topMargin = dp(8);
         header.addView(subtitle, sp);
 
         LinearLayout schedule = horizontal();
         schedule.setGravity(Gravity.CENTER_VERTICAL);
-        schedule.setPadding(dp(16), dp(14), dp(12), dp(14));
+        schedule.setPadding(dp(15), dp(12), dp(12), dp(12));
         schedule.setBackground(round(NAVY_CARD, 16));
         LinearLayout scheduleText = vertical();
         TextView eyebrow = text("СЛЕДУЮЩАЯ ПРОВЕРКА", 10, 0xffa6d9c7, true);
@@ -352,26 +351,28 @@ public final class MainActivity extends Activity {
         edit.setContentDescription("Изменить день и время проверки");
         edit.setOnClickListener(v -> showSchedule());
         schedule.addView(edit);
-        LinearLayout.LayoutParams cp = matchWrap(); cp.topMargin = dp(24);
+        LinearLayout.LayoutParams cp = matchWrap(); cp.topMargin = dp(20);
         header.addView(schedule, cp);
         return header;
     }
 
     private View notice(String title, String detail, String action, Runnable onClick) {
-        LinearLayout box = vertical();
-        box.setPadding(dp(15), dp(14), dp(15), dp(12));
+        LinearLayout box = horizontal();
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(14), dp(10), dp(12), dp(10));
         box.setBackground(round(AMBER_BG, 15));
-        box.addView(text(title, 14, AMBER_TEXT, true));
-        TextView message = text(detail, 13, AMBER_TEXT, false);
-        message.setLineSpacing(dp(2), 1f);
-        LinearLayout.LayoutParams mp = matchWrap(); mp.topMargin = dp(5);
-        box.addView(message, mp);
-        TextView link = text(action + "  →", 13, AMBER_TEXT, true);
-        link.setGravity(Gravity.CENTER_VERTICAL);
-        link.setMinHeight(dp(40));
+        LinearLayout copy = vertical();
+        copy.addView(text(title, 13, AMBER_TEXT, true));
+        TextView message = text(detail, 12, AMBER_TEXT, false);
+        message.setLineSpacing(dp(1), 1f);
+        LinearLayout.LayoutParams mp = matchWrap(); mp.topMargin = dp(4);
+        copy.addView(message, mp);
+        box.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView link = button(action, AMBER_TEXT, 0xffffedca, 12);
+        link.setContentDescription(action + ": " + title);
         link.setOnClickListener(v -> onClick.run());
-        link.setFocusable(true);
-        box.addView(link, matchWrap());
+        LinearLayout.LayoutParams linkParams = wrapWrap(); linkParams.leftMargin = dp(8);
+        box.addView(link, linkParams);
         return box;
     }
 
