@@ -44,14 +44,28 @@ def click(node):
     time.sleep(1)
 
 
+def swipe(up=True):
+    sizes = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size"))
+    if not sizes:
+        raise AssertionError("Cannot determine emulator screen size")
+    width, height = map(int, sizes[-1])
+    start, end = (int(height * .78), int(height * .30)) if up else (int(height * .30), int(height * .78))
+    adb("shell", "input", "swipe", str(width // 2), str(start), str(width // 2), str(end), "400")
+    time.sleep(.7)
+
+
 def scroll_to(text=None, description=None):
-    for _ in range(8):
-        root = tree()
-        result = find(root, text=text, description=description)
-        if result is not None:
-            return root, result
-        adb("shell", "input", "swipe", "500", "1600", "500", "560", "400")
-        time.sleep(.7)
+    root = None
+    for direction in (True, False):
+        for _ in range(8):
+            root = tree()
+            result = find(root, text=text, description=description)
+            if result is not None:
+                return root, result
+            swipe(direction)
+    if root is not None:
+        print("Visible controls:", [(n.get("text"), n.get("content-desc"), n.get("bounds"))
+                                    for n in root.iter("node") if n.get("text") or n.get("content-desc")])
     raise AssertionError("Could not scroll to " + str(text or description))
 
 
@@ -89,7 +103,7 @@ def main():
     capture()
 
     # Add a task to the real UI.
-    _, add = scroll_to(text="Добавить")
+    _, add = scroll_to(description="Добавить пункт проверки")
     click(add)
     root = tree()
     field = next((n for n in root.iter("node") if n.get("class") == "android.widget.EditText"), None)
@@ -120,7 +134,7 @@ def main():
             break
     if reminder is None:
         # The action may be just below the visible edge.
-        adb("shell", "input", "swipe", "500", "1350", "500", "700", "350")
+        swipe(True)
         root = tree()
         checked = find(root, description="Проверено: CI_Server")
         parents = {child: parent for parent in root.iter() for child in parent}
