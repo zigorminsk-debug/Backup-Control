@@ -134,6 +134,25 @@ def assert_hidden_and_saved():
         raise AssertionError("IP addresses were not archived with the completion")
 
 
+def ip_fields():
+    return [n for n in tree().iter("node") if n.get("content-desc") == "IP-адрес"]
+
+
+def tap_fresh(text=None, description=None, exact=False):
+    """Tap using bounds taken immediately before the tap: dialogs move while
+    the keyboard animates, and a stale node silently misses the button."""
+    node = wait_for(text=text, description=description, exact=exact)
+    if node is None:
+        raise AssertionError("Control not found: " + str(text or description))
+    click(find(tree(), text=text, description=description, exact=exact) or node)
+
+
+def clear_focused_field():
+    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
+    for _ in range(16):
+        adb("shell", "input", "keyevent", "KEYCODE_DEL")
+
+
 def allow_notifications_if_asked():
     root = tree()
     for node in root.iter("node"):
@@ -182,21 +201,25 @@ def main():
     click(add)
     click(wait_for(klass="android.widget.EditText"))
     adb("shell", "input", "text", "CI_Server")
-    click(wait_for(description="IP-адрес"))
+    tap_fresh(description="IP-адрес")
+    clear_focused_field()
     adb("shell", "input", "text", "192.168.1.10")
-    root = tree()
-    formatted = [n.get("text", "") for n in root.iter("node") if n.get("text")]
-    if "192.168.1.10" not in formatted:
-        raise AssertionError("A typed IP address was altered: " + str(formatted))
+    if [n.get("text", "") for n in ip_fields()] != ["192.168.1.10"]:
+        raise AssertionError("A typed IP address was altered: "
+                             + str([n.get("text", "") for n in ip_fields()]))
     # A second machine: the plus button appends another address row, and digits
     # without separators are formed into an address by the field itself.
-    click(wait_for(description="Добавить ещё один IP-адрес"))
+    tap_fresh(description="Добавить ещё один IP-адрес")
+    fields = ip_fields()
+    if len(fields) != 2:
+        raise AssertionError("The plus button did not add exactly one row: " + str(len(fields)))
+    click(fields[-1])
+    clear_focused_field()
     adb("shell", "input", "text", "19216800")
-    root = tree()
-    formatted = [n.get("text", "") for n in root.iter("node") if n.get("text")]
-    if "192.168.1.10" not in formatted or "192.168.0.0" not in formatted:
-        raise AssertionError("The second IP address row was not formed: " + str(formatted))
-    click(wait_for(text="Добавить", exact=True))
+    addresses = [n.get("text", "") for n in ip_fields()]
+    if addresses != ["192.168.1.10", "192.168.0.0"]:
+        raise AssertionError("IP rows are wrong after typing: " + str(addresses))
+    tap_fresh(text="Добавить", exact=True)
     root, _ = scroll_to(text="192.168.1.10 · 192.168.0.0")
     # Schedule an error reminder before completing the task. It must remain
     # accessible even when the task has moved to the archive.
@@ -338,5 +361,6 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         print("SMOKE TEST FAILED:", exc, file=sys.stderr)
+        print("Screen:", adb("shell", "wm", "size", check=False), file=sys.stderr)
         print(adb("logcat", "-d", "-s", "AndroidRuntime:E", check=False)[-12000:], file=sys.stderr)
         raise

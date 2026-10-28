@@ -28,6 +28,7 @@ import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
@@ -785,14 +786,25 @@ public final class MainActivity extends Activity {
         form.addView(addressHeading, ahp);
 
         LinearLayout rows = vertical();
+        ScrollView addressScroll = new ScrollView(this);
+        addressScroll.setFillViewport(false);
+        addressScroll.addView(rows, new ScrollView.LayoutParams(-1, -2));
         LinearLayout.LayoutParams rowsParams = matchWrap(); rowsParams.topMargin = dp(4);
-        form.addView(rows, rowsParams);
+        form.addView(addressScroll, rowsParams);
         List<EditText> fields = new ArrayList<>();
         List<View> removers = new ArrayList<>();
         Runnable sync = () -> {
             boolean removable = fields.size() > 1;
             for (View remover : removers) remover.setVisibility(removable ? View.VISIBLE : View.GONE);
             addAddress.setVisibility(fields.size() >= MAX_IPS ? View.GONE : View.VISIBLE);
+            // More than three addresses scroll inside the dialog, so the
+            // buttons never get pushed off a small screen or under the keyboard.
+            ViewGroup.LayoutParams params = addressScroll.getLayoutParams();
+            int height = fields.size() <= 3 ? ViewGroup.LayoutParams.WRAP_CONTENT : dp(168);
+            if (params.height != height) {
+                params.height = height;
+                addressScroll.setLayoutParams(params);
+            }
         };
         if (item == null || item.ips.isEmpty()) {
             addIpRow(rows, fields, removers, "", sync);
@@ -805,8 +817,7 @@ public final class MainActivity extends Activity {
             EditText added = addIpRow(rows, fields, removers, "", sync);
             added.requestFocus();
         });
-        TextView hint = text("Один пункт может проверять несколько машин: «＋» добавляет ещё адрес. "
-                + "Точки подставляются автоматически.", 12, MUTED, false);
+        TextView hint = text("«＋» — ещё один адрес. Точки ставятся автоматически.", 12, MUTED, false);
         hint.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(10);
         form.addView(hint, hp);
