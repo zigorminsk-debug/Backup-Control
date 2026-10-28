@@ -147,6 +147,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK for emulator
         run: ./gradlew --no-daemon assembleDebug
+      - name: Install screenshot tooling
+        run: python3 -m pip install --user --break-system-packages Pillow
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

@@ -67,9 +67,14 @@ def capture():
     output = Path("ui-smoke.png")
     with output.open("wb") as out:
         subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=out, check=True)
-    # The screenshot contains only sample data and is saved as a CI artifact.
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(output),
-                    "-vf", "scale=360:-1", "-q:v", "7", "ui-smoke-preview.jpg"], check=False)
+    # Preview conversion is optional; the PNG artifact is always available.
+    try:
+        from PIL import Image
+        with Image.open(output) as image:
+            image.thumbnail((360, 1000))
+            image.convert("RGB").save("ui-smoke-preview.jpg", quality=65, optimize=True)
+    except (ImportError, OSError) as error:
+        print("Preview conversion skipped:", error)
 
 
 def main():
