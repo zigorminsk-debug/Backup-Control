@@ -8,7 +8,9 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Signing material must never be committed.
+# Signing material must never be committed. The public certificate and its
+# fingerprint live in docs/; the private key lives only in GitHub Secrets.
+signing/
 *.jks
 *.keystore
 *.p12

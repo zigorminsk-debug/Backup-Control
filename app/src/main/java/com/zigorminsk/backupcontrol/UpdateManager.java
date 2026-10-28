@@ -33,6 +33,8 @@ import java.util.concurrent.Executors;
 /** GitHub releases are checked periodically; the installer still requires user consent. */
 final class UpdateManager {
     static final long INTERVAL_MS = 12L * 60 * 60 * 1000;
+    /** Short retry window after a failed check instead of a full 12-hour wait. */
+    private static final long RETRY_MS = 15L * 60 * 1000;
     private static final String API = "https://api.github.com/repos/zigorminsk-debug/Backup-Control/releases/latest";
     private static final String ASSET = "Backup-Control.apk";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
@@ -48,13 +50,20 @@ final class UpdateManager {
             String result;
             try {
                 recoverDownload(app);
-                long last = prefs(app).getLong("last_attempt", 0);
+                long next = prefs(app).getLong("next_attempt", 0);
                 long now = System.currentTimeMillis();
-                if (!force && last <= now && now - last < INTERVAL_MS) {
+                if (!force && next > now) {
                     result = status(app);
                 } else {
-                    prefs(app).edit().putLong("last_attempt", now).apply();
-                    result = check(app);
+                    try {
+                        result = check(app);
+                        prefs(app).edit().putLong("next_attempt", now + INTERVAL_MS).apply();
+                    } catch (Exception e) {
+                        // A failed attempt (device offline, GitHub hiccup) must not
+                        // silence update checks for the whole 12-hour interval.
+                        prefs(app).edit().putLong("next_attempt", now + RETRY_MS).apply();
+                        throw e;
+                    }
                 }
             } catch (Exception e) {
                 result = "Не удалось проверить обновления. Проверьте интернет и попробуйте ещё раз.";

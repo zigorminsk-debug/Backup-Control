@@ -2,6 +2,7 @@ package com.zigorminsk.backupcontrol;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -282,25 +283,42 @@ final class BackupStore {
     }
 
     private List<BackupItem> loadItems() {
+        String raw = prefs.getString("items", "[]");
         List<BackupItem> items = new ArrayList<>();
         try {
-            JSONArray array = new JSONArray(prefs.getString("items", "[]"));
+            JSONArray array = new JSONArray(raw);
             for (int i = 0; i < array.length(); i++) items.add(BackupItem.fromJson(array.getJSONObject(i)));
         } catch (JSONException e) {
-            throw new IllegalStateException("Cannot read backup checklist", e);
+            // Unreadable preferences must never crash the app on every launch:
+            // that would lock the user out of their own data. Keep the damaged
+            // payload for later recovery and continue with an empty checklist.
+            recoverBroken("items", raw, e);
+            return new ArrayList<>();
         }
         return items;
     }
 
     private List<ArchiveEntry> loadArchive() {
+        String raw = prefs.getString("archive", "[]");
         List<ArchiveEntry> entries = new ArrayList<>();
         try {
-            JSONArray array = new JSONArray(prefs.getString("archive", "[]"));
+            JSONArray array = new JSONArray(raw);
             for (int i = 0; i < array.length(); i++) entries.add(ArchiveEntry.fromJson(array.getJSONObject(i)));
         } catch (JSONException e) {
-            throw new IllegalStateException("Cannot read completion archive", e);
+            recoverBroken("archive", raw, e);
+            return new ArrayList<>();
         }
         return entries;
+    }
+
+    /** Preserve the last readable snapshot so damaged data is never silently lost. */
+    private void recoverBroken(String key, String raw, JSONException cause) {
+        Log.w("BackupControl", "Cannot read " + key + "; preserving a copy", cause);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (raw != null && !raw.isEmpty()) {
+            editor.putString(key + "_damaged_" + System.currentTimeMillis(), raw);
+        }
+        editor.remove(key).commit();
     }
 
     private void saveItems(List<BackupItem> items) {
