@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Every Actions run gets a monotonically increasing versionCode. This is also
+// the last component of the release tag consumed by the in-app updater.
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def signingFile = System.getenv('ANDROID_KEYSTORE_FILE')
+
+android {
+    namespace 'com.zigorminsk.backupcontrol'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.zigorminsk.backupcontrol'
+        minSdk 23
+        targetSdk 35
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+    }
+
+    signingConfigs {
+        if (signingFile) {
+            release {
+                storeFile file(signingFile)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (signingFile) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
