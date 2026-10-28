@@ -116,8 +116,10 @@ def main():
     time.sleep(3)
     if not adb("shell", "pidof", PACKAGE).strip():
         raise AssertionError("App process did not start")
-    root = tree()
-    if find(root, text="Ваши бэкапы") is None:
+    if wait_for(text="Ваши бэкапы") is None:
+        root = tree()
+        print("Visible controls:", [(n.get("text"), n.get("content-desc"), n.get("class"))
+                                    for n in root.iter("node") if n.get("text") or n.get("content-desc")])
         raise AssertionError("Home screen did not appear")
     capture()
 
