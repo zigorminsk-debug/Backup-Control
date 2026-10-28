@@ -235,6 +235,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The pinned fingerprint and certificate live in the repository, so the
+      # publish job needs the source as well as the artifact.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Download signed APK from the build job
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -256,11 +259,11 @@ jobs:
             echo '::error::Собранный APK не подписан. Публикация остановлена.'
             exit 1
           fi
-          PINNED_SHA="$(tr -d '[:space:]' < docs/release-fingerprint.txt)"
-          if [[ -z "$PINNED_SHA" ]]; then
-            echo '::error::docs/release-fingerprint.txt пуст: проверить ключ невозможно.'
+          if [[ ! -s docs/release-fingerprint.txt ]]; then
+            echo '::error::docs/release-fingerprint.txt не найден или пуст: проверить ключ невозможно.'
             exit 1
           fi
+          PINNED_SHA="$(tr -d '[:space:]' < docs/release-fingerprint.txt)"
           if [[ "$NEW_SHA" != "$PINNED_SHA" ]]; then
             echo "::error::APK подписан другим ключом ($NEW_SHA), чем закреплённый постоянный ключ ($PINNED_SHA). Обновление поверх установленного приложения стало бы невозможным, а данные потерялись бы. Публикация остановлена."
             exit 1
