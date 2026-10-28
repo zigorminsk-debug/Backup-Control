@@ -32,6 +32,19 @@ def find(root, text=None, description=None, exact=False):
     return None
 
 
+def wait_for(text=None, description=None, klass=None, exact=False):
+    for _ in range(8):
+        root = tree()
+        if klass is not None:
+            node = next((n for n in root.iter("node") if n.get("class") == klass), None)
+        else:
+            node = find(root, text=text, description=description, exact=exact)
+        if node is not None:
+            return node
+        time.sleep(.6)
+    return None
+
+
 def click(node):
     if node is None:
         root = tree()
@@ -108,12 +121,9 @@ def main():
     # Add a task to the real UI.
     _, add = scroll_to(description="Добавить пункт проверки")
     click(add)
-    root = tree()
-    field = next((n for n in root.iter("node") if n.get("class") == "android.widget.EditText"), None)
-    click(field)
+    click(wait_for(klass="android.widget.EditText"))
     adb("shell", "input", "text", "CI_Server")
-    root = tree()
-    click(find(root, text="Добавить", exact=True))
+    click(wait_for(text="Добавить", exact=True))
     _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
     click(checkbox)
     _, checked = scroll_to(description="Проверено: CI_Server")
@@ -148,10 +158,9 @@ def main():
             if reminder is not None:
                 break
     click(reminder)
-    root = tree()
-    if find(root, text="Напомнить об ошибке") is None:
+    if wait_for(text="Напомнить об ошибке") is None:
         raise AssertionError("Reminder dialog did not open")
-    click(find(root, text="Сохранить", exact=True))
+    click(wait_for(text="Сохранить", exact=True))
     allow_notifications_if_asked()
     _, reminder_label = scroll_to(text="НАПОМИНАНИЕ")
     if reminder_label is None:
