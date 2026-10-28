@@ -879,7 +879,10 @@ public final class MainActivity extends Activity {
                 String formatted = IpAddresses.formatInput(s);
                 if (formatted.contentEquals(s)) return;
                 formatting = true;
-                field.setText(formatted);
+                // Replace the text in place instead of setText(): rebuilding the
+                // Editable while the keyboard is composing can drop or duplicate
+                // a character on fast input.
+                s.replace(0, s.length(), formatted);
                 // Always continue typing at the end of the formatted address.
                 field.setSelection(formatted.length());
                 formatting = false;

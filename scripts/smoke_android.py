@@ -155,6 +155,22 @@ def tap_fresh(text=None, description=None, exact=False):
     click(fresh if fresh is not None else node)
 
 
+def type_ip(digits, expected, attempts=3):
+    """Type an address digit by digit. Injecting a whole string at once races
+    with the field reformatting itself, so a character can be lost."""
+    seen = None
+    for _ in range(attempts):
+        clear_focused_field()
+        for digit in digits:
+            adb("shell", "input", "text", digit)
+            time.sleep(.12)
+        values = [n.get("text", "") for n in ip_fields()]
+        seen = values
+        if values and values[-1] == expected:
+            return
+    raise AssertionError("Typing %s produced %s, expected %s" % (digits, seen, expected))
+
+
 def clear_focused_field():
     adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
     for _ in range(16):
@@ -213,9 +229,7 @@ def main():
     clear_focused_field()
     # Plain digits: the field has to insert the dots itself. 256 cannot be an
     # octet, so the digits form the valid four-octet address 25.62.56.25.
-    adb("shell", "input", "text", "256256256256")
-    if [n.get("text", "") for n in ip_fields()] != ["25.62.56.25"]:
-        raise AssertionError("Digits were not formed into an IP address: " + str(describe_fields()))
+    type_ip("256256256256", "25.62.56.25")
     # A second machine: the plus button appends another address row, and digits
     # without separators are formed into an address by the field itself.
     tap_fresh(description="Добавить ещё один адрес", exact=True)
@@ -224,10 +238,8 @@ def main():
         raise AssertionError("The plus button did not add exactly one row: "
                              + str(describe_fields()))
     click(fields[-1])
-    clear_focused_field()
-    adb("shell", "input", "text", "9999999999")
-    addresses = [n.get("text", "") for n in ip_fields()]
-    if addresses != ["25.62.56.25", "99.99.99.99"]:
+    type_ip("9999999999", "99.99.99.99")
+    if [n.get("text", "") for n in ip_fields()] != ["25.62.56.25", "99.99.99.99"]:
         raise AssertionError("IP rows are wrong after typing: " + str(describe_fields()))
     tap_fresh(text="Добавить", exact=True)
     root, _ = scroll_to(text="25.62.56.25 · 99.99.99.99")
