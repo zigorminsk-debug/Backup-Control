@@ -160,17 +160,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            python3 scripts/smoke_android.py > "$RUNNER_TEMP/ui-smoke.log" 2>&1 || {
-              cat "$RUNNER_TEMP/ui-smoke.log"
-              python3 -c 'from pathlib import Path; import os; s=Path(os.environ["RUNNER_TEMP"],"ui-smoke.log").read_text(errors="replace")[-12000:]; print("::error::" + s.replace("%","%25").replace("\r","%0D").replace("\n","%0A"))'
-              exit 1
-            }
-            cat "$RUNNER_TEMP/ui-smoke.log"
-            # A small preview is available through check annotations as well as the artifact.
-            if [ -f ui-smoke-preview.jpg ]; then
-              python3 -c 'import base64; print("::notice title=UI preview::" + base64.b64encode(open("ui-smoke-preview.jpg", "rb").read()).decode())'
-            fi
+          script: bash scripts/run_ui_smoke.sh
       - name: Upload UI screenshot
         if: always()
         uses: actions/upload-artifact@v4
