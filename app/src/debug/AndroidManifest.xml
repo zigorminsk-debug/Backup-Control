@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only in debug APKs: exercised by the Android emulator CI job. -->
+    <instrumentation
+        android:name=".UpdateVerificationInstrumentation"
+        android:targetPackage="com.zigorminsk.backupcontrol"
+        android:label="Update signature verification test" />
+</manifest>

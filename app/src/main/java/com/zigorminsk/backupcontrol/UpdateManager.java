@@ -124,19 +124,26 @@ final class UpdateManager {
                 return "У вас установлена последняя версия.";
             }
             String url = null;
+            long assetSize = -1;
             JSONArray assets = release.optJSONArray("assets");
             if (assets != null) {
                 for (int i = 0; i < assets.length(); i++) {
                     JSONObject asset = assets.optJSONObject(i);
                     if (asset != null && ASSET.equals(asset.optString("name"))) {
                         url = asset.optString("browser_download_url", "");
+                        assetSize = asset.optLong("size", -1);
                         break;
                     }
                 }
             }
-            if (!ReleaseRules.trustedAssetUrl(url) || !url.endsWith("/" + tag + "/" + ASSET))
+            if (!ReleaseRules.trustedAssetUrl(url) || !url.endsWith("/" + tag + "/" + ASSET)
+                    || assetSize <= 0 || assetSize > 200L * 1024 * 1024)
                 return "В выпуске не найден подходящий APK обновления.";
             SharedPreferences p = prefs(context);
+            if (p.getInt("ready_code", 0) != 0 && p.getInt("ready_code", 0) != code) {
+                // Never label an older ready APK as the newly found release.
+                discardReady(context);
+            }
             p.edit().putString("version_name", tag.substring(1)).putInt("latest_code", code)
                     .putString("asset_url", url).commit();
             if (p.getInt("ready_code", 0) == code && readyFile(context) != null) {
@@ -263,15 +270,28 @@ final class UpdateManager {
         }
     }
 
+    private static void discardReady(Context context) {
+        SharedPreferences p = prefs(context);
+        int ready = p.getInt("ready_code", 0);
+        if (ready > 0) {
+            new File(new File(context.getFilesDir(), "updates"), "backup-control-" + ready + ".apk").delete();
+        }
+        p.edit().remove("ready_code").commit();
+        Notifications.cancelUpdate(context);
+    }
+
     private static void clearObsolete(Context context) {
         SharedPreferences p = prefs(context);
-        if (p.getInt("ready_code", 0) <= BuildConfig.VERSION_CODE) {
-            File dir = new File(context.getFilesDir(), "updates");
-            File[] files = dir.listFiles();
-            if (files != null) for (File file : files) file.delete();
-            p.edit().remove("ready_code").remove("latest_code").remove("version_name").remove("asset_url").apply();
-            Notifications.cancelUpdate(context);
+        long id = p.getLong("download_id", -1);
+        if (id != -1) {
+            ((DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE)).remove(id);
         }
+        File dir = new File(context.getFilesDir(), "updates");
+        File[] files = dir.listFiles();
+        if (files != null) for (File file : files) file.delete();
+        p.edit().remove("ready_code").remove("latest_code").remove("version_name")
+                .remove("asset_url").remove("download_id").remove("download_code").commit();
+        Notifications.cancelUpdate(context);
     }
 
     private static SharedPreferences prefs(Context context) {

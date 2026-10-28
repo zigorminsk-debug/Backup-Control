@@ -103,6 +103,16 @@ def capture():
 def main():
     adb("install", "-r", APK)
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    # Exercise the production updater's APK verifier on an actual device: an
+    # update with the same key must pass, a different signer must fail.
+    test_dir = "/sdcard/Android/data/" + PACKAGE + "/files/Download"
+    adb("shell", "mkdir", "-p", test_dir)
+    adb("push", str(Path(os.environ["RUNNER_TEMP"], "updated-debug.apk")), test_dir + "/trusted-update.apk")
+    adb("push", str(Path(os.environ["RUNNER_TEMP"], "untrusted-debug.apk")), test_dir + "/untrusted-update.apk")
+    result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.UpdateVerificationInstrumentation")
+    if "signature_check=PASS" not in result:
+        raise AssertionError("Update signature verification failed: " + result)
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
     time.sleep(3)
     if not adb("shell", "pidof", PACKAGE).strip():
         raise AssertionError("App process did not start")
@@ -190,7 +200,7 @@ def main():
     time.sleep(3)
     scroll_to(description="Отметить проверенным: CI_Server")
     scroll_to(text="НАПОМИНАНИЕ ОТПРАВЛЕНО")
-    print("PASS: checklist persistence, same-key upgrade, scheduled alarms, weekly reset and overdue reminder")
+    print("PASS: signature verification, same-key upgrade, checklist persistence, alarms, weekly reset and overdue reminder")
 
 
 if __name__ == "__main__":
