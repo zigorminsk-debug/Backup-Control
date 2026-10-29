@@ -124,8 +124,17 @@ def open_archive():
         return
     # A tap can be swallowed while a window is still settling, so retry with
     # freshly read bounds instead of clicking a stale node once.
-    for _ in range(3):
+    for _ in range(4):
+        # An open shade sits over the app and swallows taps.
+        adb("shell", "cmd", "statusbar", "collapse")
+        time.sleep(.5)
         _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
+        y = (int(re.findall(r"\d+", button.get("bounds", "0"))[1])
+             + int(re.findall(r"\d+", button.get("bounds", "0"))[3])) // 2
+        if y < 90:
+            # The header is pinned under the status bar; pull the content down.
+            swipe(up=False)
+            _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
         click(button)
         if wait_for(text="Архив выполнений", attempts=6) is not None:
             return
