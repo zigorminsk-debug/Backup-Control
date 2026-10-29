@@ -88,8 +88,9 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             }
             // Swiping away asks how long to postpone; every option must be there.
             require(Notifications.snoozePrompt(context), "snooze prompt was not posted");
+            // The shade is updated asynchronously after notify().
+            require(awaitTag(manager, Notifications.PROMPT_TAG), "snooze prompt is not in the shade");
             StatusBarNotification prompt = byTag(manager, Notifications.PROMPT_TAG);
-            require(prompt != null, "snooze prompt is not in the shade");
             require(prompt.getNotification().actions != null
                             && prompt.getNotification().actions.length == 3,
                     "snooze prompt does not offer three choices");
