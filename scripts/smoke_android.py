@@ -79,7 +79,9 @@ def swipe(up=True):
     if not sizes:
         raise AssertionError("Cannot determine emulator screen size")
     width, height = map(int, sizes[-1])
-    start, end = (int(height * .78), int(height * .30)) if up else (int(height * .30), int(height * .78))
+    # Both gestures stay in the middle of the screen: a drag that starts near the
+    # top edge is taken by SystemUI as a request for the quick settings panel.
+    start, end = (int(height * .80), int(height * .45)) if up else (int(height * .45), int(height * .80))
     adb("shell", "input", "swipe", str(width // 2), str(start), str(width // 2), str(end), "400")
     time.sleep(.7)
 
@@ -163,7 +165,13 @@ def open_archive():
 def open_checklist():
     dismiss_reminder_screen()
     if find(tree(), text="Архив выполнений") is not None:
-        click(wait_for(description="Вернуться к списку задач"))
+        back = wait_for(description="Вернуться к списку задач", attempts=4)
+        if back is not None:
+            click(back)
+        else:
+            adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
+                "-d", "backupcontrol://checklist", "-n", PACKAGE + "/.MainActivity")
+            wait_for(text="Чек-лист", attempts=8)
 
 
 def assert_archive_record():

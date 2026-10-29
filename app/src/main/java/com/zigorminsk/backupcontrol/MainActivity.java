@@ -112,12 +112,14 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * backupcontrol://archive opens the history directly. It is handy from a
-     * shortcut and lets automation reach the screen without guessing taps.
+     * backupcontrol://archive and backupcontrol://checklist open those screens
+     * directly: handy from a shortcut, and reachable without guessing taps.
      */
     private void applyDeepLink(Intent intent) {
         if (intent == null || intent.getData() == null) return;
-        if ("archive".equals(intent.getData().getHost())) showingArchive = true;
+        String host = intent.getData().getHost();
+        if ("archive".equals(host)) showingArchive = true;
+        if ("checklist".equals(host)) showingArchive = false;
     }
 
     @Override protected void onStart() {
