@@ -273,21 +273,28 @@ def main():
 
     # Swiping the weekly reminder away must ask how long to postpone it. The
     # instrumentation leaves that reminder in the shade for this step.
-    adb("shell", "cmd", "statusbar", "expand-notifications")
-    time.sleep(1)
-    row = notification_row("Пора проверить бэкапы")
-    if row is None:
+    def swipe_reminder_once():
+        adb("shell", "cmd", "statusbar", "expand-notifications")
+        time.sleep(2)
+        row = notification_row("Пора проверить бэкапы")
+        if row is None:
+            return False
+        x1, y1, x2, y2 = bounds(row)
+        middle = (y1 + y2) // 2
+        # Start well inside the row and drag it across the screen: a swipe that
+        # begins at the very edge sometimes misses the touch target.
+        adb("shell", "input", "swipe", str(x2 - 40), str(middle), "20", str(middle), "400")
+        time.sleep(1)
         adb("shell", "cmd", "statusbar", "collapse")
-        raise AssertionError("The weekly reminder is not in the shade")
-    x1, y1, x2, y2 = bounds(row)
-    middle = (y1 + y2) // 2
-    adb("shell", "input", "swipe", str(x2), str(middle), "20", str(middle), "300")
-    adb("shell", "cmd", "statusbar", "collapse")
-    if wait_for(text="Отложить напоминание?", attempts=25) is None:
+        return wait_for(text="Отложить напоминание?", attempts=10) is not None
+
+    if not any(swipe_reminder_once() for _ in range(3)):
+        print("Notifications:", adb("shell", "dumpsys", "notification", "--noredact")[-2000:],
+              file=sys.stderr)
         raise AssertionError("Swiping the reminder away did not offer to postpone it")
     for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
                    "Отложить на 2 ч", "Отложить на 3 ч"]:
-        if wait_for(text=option, exact=True, attempts=12) is None:
+        if wait_for(text=option, exact=True, attempts=10) is None:
             raise AssertionError("Postpone dialog is missing: " + option)
     click(wait_for(text="Отложить на 15 мин", exact=True))
     time.sleep(1)
