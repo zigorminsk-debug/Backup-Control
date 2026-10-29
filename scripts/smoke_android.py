@@ -100,9 +100,14 @@ def find_or_scroll(text=None, description=None, swipes=3):
 
 
 def dismiss_reminder_screen():
-    """Close the full-screen reminder if a background alert opened it."""
+    """Wake the screen and close the full-screen reminder if one is showing."""
+    # The reminder turns the screen on; afterwards it may fall asleep again and
+    # hide everything from the automation.
+    adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+    adb("shell", "wm", "dismiss-keyguard", check=False)
     for _ in range(3):
-        if find(tree(), text="Открыть программу") is None:
+        root = tree()
+        if find(root, text="Открыть программу") is None:
             return
         adb("shell", "input", "keyevent", "KEYCODE_BACK")
         time.sleep(1)
@@ -115,6 +120,8 @@ def open_archive():
     _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
     click(button)
     if wait_for(text="Архив выполнений") is None:
+        print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
+                           if n.get("text") or n.get("content-desc")], file=sys.stderr)
         raise AssertionError("Archive screen did not open")
 
 
