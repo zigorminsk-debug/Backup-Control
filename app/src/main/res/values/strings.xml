@@ -3,4 +3,5 @@
     <string name="notification_channel_checks">Еженедельная проверка</string>
     <string name="notification_channel_errors">Напоминания об ошибках</string>
     <string name="notification_channel_updates">Обновления приложения</string>
+    <string name="notification_channel_prompt">Отложить напоминание</string>
 </resources>

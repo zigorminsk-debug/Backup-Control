@@ -5,6 +5,7 @@ import android.app.Instrumentation;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.net.Uri;
 import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
@@ -68,6 +69,45 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             }
             require(Notifications.weekly(context, pending), "weekly reminder was not posted");
             require(awaitTag(manager, "weekly_summary"), "weekly summary is not in the shade");
+            StatusBarNotification summary = byTag(manager, "weekly_summary");
+            require(summary != null, "weekly summary disappeared");
+            Notification posted = summary.getNotification();
+            // It must stay in the shade after a tap, open the app when tapped,
+            // and ask how long to postpone when swiped away.
+            require((posted.flags & Notification.FLAG_AUTO_CANCEL) == 0,
+                    "summary would vanish after being tapped");
+            require(posted.contentIntent != null, "summary does not open the app");
+            require(posted.deleteIntent != null, "swiping the summary away would be lost");
+            require(posted.actions != null && posted.actions.length == 1,
+                    "summary has no postpone action");
+            if (Build.VERSION.SDK_INT >= 26) {
+                Uri expected = Uri.parse("android.resource://" + context.getPackageName() + "/"
+                        + R.raw.notification_chime);
+                require(expected.equals(manager.getNotificationChannel(Notifications.CHECKS).getSound()),
+                        "weekly channel does not use the app's own chime");
+            }
+            // Swiping away asks how long to postpone; every option must be there.
+            require(Notifications.snoozePrompt(context), "snooze prompt was not posted");
+            StatusBarNotification prompt = byTag(manager, Notifications.PROMPT_TAG);
+            require(prompt != null, "snooze prompt is not in the shade");
+            require(prompt.getNotification().actions != null
+                            && prompt.getNotification().actions.length == 3,
+                    "snooze prompt does not offer three choices");
+            require(Notifications.SNOOZE_MINUTES.length >= 5,
+                    "postpone dialog offers too few delays");
+            // Postponing removes the reminder and stores the chosen delay.
+            long until = ReminderScheduler.snooze(context, 15);
+            require(store.snoozeUntil() == until && until > System.currentTimeMillis(),
+                    "postpone was not stored");
+            Notifications.cancelWeekly(context);
+            ReminderScheduler.deliverWeeklyIfDue(context);
+            require(!awaitTag(manager, "weekly_summary"),
+                    "a postponed reminder alerted again immediately");
+            // When the delay is over the reminder must return.
+            store.setSnooze(System.currentTimeMillis() - 1000);
+            ReminderScheduler.deliverWeeklyIfDue(context);
+            require(awaitTag(manager, "weekly_summary"), "the reminder did not return after postponing");
+            require(store.snoozeUntil() == 0, "the finished postpone was not cleared");
             require(awaitTag(manager, "weekly_task"), "per-task reminder is not in the shade");
             for (StatusBarNotification notification : manager.getActiveNotifications()) {
                 if (!"weekly_task".equals(notification.getTag())) continue;
@@ -89,6 +129,13 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
         }
     }
 
+    private static StatusBarNotification byTag(NotificationManager manager, String tag) {
+        for (StatusBarNotification notification : manager.getActiveNotifications()) {
+            if (tag.equals(notification.getTag())) return notification;
+        }
+        return null;
+    }
+
     private static boolean awaitTag(NotificationManager manager, String tag) {
         for (int attempt = 0; attempt < 25; attempt++) {
             for (StatusBarNotification notification : manager.getActiveNotifications()) {
@@ -103,9 +150,13 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
         return false;
     }
 
+    /**
+     * Leaves the weekly reminder in the shade on purpose: the UI smoke test
+     * swipes it away right after this run to check the postpone dialog.
+     */
     private static void cleanup(Context context, NotificationManager manager, int addedId) {
         Notifications.cancelTest(context);
-        manager.cancel("weekly_summary", Notifications.WEEKLY_ID);
+        Notifications.cancelSnoozePrompt(context);
         for (StatusBarNotification notification : manager.getActiveNotifications()) {
             if ("weekly_task".equals(notification.getTag())) {
                 manager.cancel("weekly_task", notification.getId());

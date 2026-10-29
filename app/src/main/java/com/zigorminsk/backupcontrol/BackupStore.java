@@ -111,6 +111,19 @@ final class BackupStore {
         }
     }
 
+    /** When the user postponed the reminder; 0 when nothing is postponed. */
+    long snoozeUntil() {
+        synchronized (LOCK) { return prefs.getLong("snoozeUntil", 0); }
+    }
+
+    void setSnooze(long until) {
+        synchronized (LOCK) { prefs.edit().putLong("snoozeUntil", until).commit(); }
+    }
+
+    void clearSnooze() {
+        synchronized (LOCK) { prefs.edit().remove("snoozeUntil").commit(); }
+    }
+
     void markWeeklyNotified(String cycle) {
         synchronized (LOCK) {
             String last = prefs.getString("lastWeeklyNotice", "");

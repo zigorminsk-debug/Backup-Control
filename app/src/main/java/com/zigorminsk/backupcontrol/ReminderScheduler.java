@@ -13,6 +13,13 @@ import java.util.List;
 final class ReminderScheduler {
     static final String WEEKLY = "com.zigorminsk.backupcontrol.WEEKLY";
     static final String ERROR = "com.zigorminsk.backupcontrol.ERROR";
+    /** The user swiped the reminder away: ask how long to postpone. */
+    static final String PROMPT = "com.zigorminsk.backupcontrol.SNOOZE_PROMPT";
+    /** A postpone option was chosen; the extra carries the minutes. */
+    static final String PICK = "com.zigorminsk.backupcontrol.SNOOZE_PICK";
+    /** A postponed reminder is due. */
+    static final String SNOOZE_DUE = "com.zigorminsk.backupcontrol.SNOOZE_DUE";
+    static final String EXTRA_MINUTES = "minutes";
 
     private ReminderScheduler() { }
 
@@ -46,6 +53,10 @@ final class ReminderScheduler {
     static void rescheduleAll(Context context) {
         BackupStore store = new BackupStore(context);
         store.syncCycle();
+        long snooze = store.snoozeUntil();
+        if (snooze > System.currentTimeMillis()) {
+            schedule(context, snooze, snoozeIntent(context));
+        }
         deliverWeeklyIfDue(context);
         scheduleWeekly(context);
         for (BackupItem item : store.items()) scheduleError(context, item);
@@ -54,13 +65,51 @@ final class ReminderScheduler {
     static void deliverWeeklyIfDue(Context context) {
         BackupStore store = new BackupStore(context);
         store.syncCycle();
+        long now = System.currentTimeMillis();
+        long snooze = store.snoozeUntil();
+        if (snooze > now) {
+            // Still postponed: keep the alarm and stay quiet.
+            schedule(context, snooze, snoozeIntent(context));
+            return;
+        }
+        // A paused reminder that has come due alerts again even though this
+        // week's cycle was already marked as delivered.
+        boolean postponed = snooze > 0;
+        if (postponed) store.clearSnooze();
         String cycle = store.unnotifiedWeeklyCycle();
-        if (cycle == null) return;
+        if (cycle == null && !postponed) return;
         List<BackupItem> pending = new ArrayList<>();
         for (BackupItem item : store.items()) if (!item.checked) pending.add(item);
         // If permission is disabled, leave the cycle pending and deliver when
         // notifications are enabled. No reminder is needed if all tasks are done.
-        if (pending.isEmpty() || Notifications.weekly(context, pending)) store.markWeeklyNotified(cycle);
+        if (pending.isEmpty()) {
+            if (cycle != null) store.markWeeklyNotified(cycle);
+            return;
+        }
+        if (Notifications.weekly(context, pending) && cycle != null) store.markWeeklyNotified(cycle);
+    }
+
+    /** Postpones the weekly reminder; the next alert fires after the given delay. */
+    static long snooze(Context context, int minutes) {
+        BackupStore store = new BackupStore(context);
+        long until = System.currentTimeMillis() + minutes * 60_000L;
+        store.setSnooze(until);
+        schedule(context, until, snoozeIntent(context));
+        Notifications.cancelWeekly(context);
+        AppEvents.changed(context);
+        return until;
+    }
+
+    /** Cancels a postponed reminder, leaving this week without further alerts. */
+    static void cancelSnooze(Context context) {
+        BackupStore store = new BackupStore(context);
+        store.clearSnooze();
+        AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pending = snoozeIntent(context);
+        manager.cancel(pending);
+        pending.cancel();
+        Notifications.cancelWeekly(context);
+        AppEvents.changed(context);
     }
 
     static void deliverError(Context context, int id) {
@@ -101,6 +150,30 @@ final class ReminderScheduler {
         Intent intent = new Intent(context, ReminderReceiver.class).setAction(ERROR)
                 .setData(Uri.parse("backupcontrol://reminder/" + id)).putExtra("item_id", id);
         return PendingIntent.getBroadcast(context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** Fires when the user swipes the reminder away, or taps "Отложить…". */
+    static PendingIntent promptIntent(Context context) {
+        Intent intent = new Intent(context, ReminderReceiver.class).setAction(PROMPT)
+                .setData(Uri.parse("backupcontrol://snooze/prompt"));
+        return PendingIntent.getBroadcast(context, 2, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** Carries the chosen delay; one PendingIntent per option so they stay distinct. */
+    static PendingIntent pickIntent(Context context, int minutes) {
+        Intent intent = new Intent(context, ReminderReceiver.class).setAction(PICK)
+                .setData(Uri.parse("backupcontrol://snooze/pick/" + minutes))
+                .putExtra(EXTRA_MINUTES, minutes);
+        return PendingIntent.getBroadcast(context, 100 + minutes, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static PendingIntent snoozeIntent(Context context) {
+        Intent intent = new Intent(context, ReminderReceiver.class).setAction(SNOOZE_DUE)
+                .setData(Uri.parse("backupcontrol://snooze/due"));
+        return PendingIntent.getBroadcast(context, 3, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

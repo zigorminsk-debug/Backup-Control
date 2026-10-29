@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Notification vibration (the weekly reminder must be felt, not only heard). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 12 can refuse SCHEDULE_EXACT_ALARM, which silently turns the
          weekly reminder into an inexact alarm that may fire hours late. On
          Android 13+ USE_EXACT_ALARM is granted on install because the app's only
@@ -30,6 +32,14 @@
             </intent-filter>
         </activity>
         <receiver android:name=".ReminderReceiver" android:exported="false" />
+        <!-- Dialog shown when the reminder is swiped away. -->
+        <activity
+            android:name=".SnoozeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTop"
+            android:theme="@style/SnoozeTheme" />
         <receiver android:name=".SystemEventReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

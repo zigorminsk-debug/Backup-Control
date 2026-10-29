@@ -36,8 +36,8 @@ def find(root, text=None, description=None, exact=False):
     return None
 
 
-def wait_for(text=None, description=None, klass=None, exact=False):
-    for _ in range(8):
+def wait_for(text=None, description=None, klass=None, exact=False, attempts=8):
+    for _ in range(attempts):
         root = tree()
         if klass is not None:
             node = next((n for n in root.iter("node") if n.get("class") == klass), None)
@@ -97,6 +97,19 @@ def find_or_scroll(text=None, description=None, swipes=3):
             return node
         swipe(True)
     return None
+
+
+def notification_row(prefix):
+    for node in tree().iter("node"):
+        text = node.get("text", "")
+        if text.startswith(prefix):
+            return node
+    return None
+
+
+def bounds(node):
+    values = [int(v) for v in re.findall(r"\d+", node.get("bounds", ""))]
+    return values if len(values) == 4 else (0, 0, 0, 0)
 
 
 def open_archive():
@@ -251,11 +264,35 @@ def main():
     posted = adb("shell", "dumpsys", "notification", "--noredact")
     if "notification_test" not in posted:
         raise AssertionError("The test notification did not reach the shade")
-    if "weekly_checks_v2" not in posted:
+    if "weekly_checks_v3" not in posted:
         # Some platform builds omit channel ids from this dump; the channel's
-        # importance, sound and vibration are asserted by instrumentation.
+        # importance, sound, vibration and its own chime are asserted by
+        # instrumentation.
         print("note: channel id is not listed by dumpsys on this build")
     click(wait_for(text="Отмена", exact=True))
+
+    # Swiping the weekly reminder away must ask how long to postpone it. The
+    # instrumentation leaves that reminder in the shade for this step.
+    adb("shell", "cmd", "statusbar", "expand-notifications")
+    time.sleep(1)
+    row = notification_row("Пора проверить бэкапы")
+    if row is None:
+        adb("shell", "cmd", "statusbar", "collapse")
+        raise AssertionError("The weekly reminder is not in the shade")
+    x1, y1, x2, y2 = bounds(row)
+    middle = (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x2), str(middle), "20", str(middle), "300")
+    adb("shell", "cmd", "statusbar", "collapse")
+    if wait_for(text="Отложить напоминание?", attempts=25) is None:
+        raise AssertionError("Swiping the reminder away did not offer to postpone it")
+    for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
+                   "Отложить на 2 ч", "Отложить на 3 ч"]:
+        if wait_for(text=option, exact=True, attempts=12) is None:
+            raise AssertionError("Postpone dialog is missing: " + option)
+    click(wait_for(text="Отложить на 15 мин", exact=True))
+    time.sleep(1)
+    if adb("shell", "dumpsys", "notification", "--noredact").count("weekly_summary"):
+        raise AssertionError("The reminder stayed visible after being postponed")
 
     # Add a task to the real UI, with two IP addresses. The address field must
     # accept plain digits and turn them into a dotted address by itself.

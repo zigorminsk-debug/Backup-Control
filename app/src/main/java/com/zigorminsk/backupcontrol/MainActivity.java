@@ -766,6 +766,20 @@ public final class MainActivity extends Activity {
                 this::openChannelSettings), topMargin(5));
         state.addView(statusLine(exact, "Точное время разрешено", "Android может задержать — нажмите",
                 this::enableExactAlarms), topMargin(5));
+        long snoozed = store.snoozeUntil();
+        if (snoozed > System.currentTimeMillis()) {
+            TextView postponed = text("⏱  Отложено до " + shortDate(snoozed) + " — нажмите, чтобы отменить",
+                    13, AMBER_TEXT, true);
+            TextView row = postponed;
+            row.setFocusable(true);
+            row.setContentDescription("Отменить отложенное напоминание");
+            row.setOnClickListener(v -> {
+                ReminderScheduler.cancelSnooze(this);
+                toast("Отложенное напоминание отменено");
+                render();
+            });
+            state.addView(row, topMargin(5));
+        }
         TextView testNotification = button("Проверить уведомление", GREEN_DARK, MINT, 13);
         testNotification.setContentDescription("Отправить проверочное уведомление сейчас");
         testNotification.setOnClickListener(v -> sendTestNotification());
