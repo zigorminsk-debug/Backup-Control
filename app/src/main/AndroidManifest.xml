@@ -36,9 +36,11 @@
         </activity>
         <receiver android:name=".ReminderReceiver" android:exported="false" />
         <!-- The reminder shown over the lock screen when it is due. -->
+        <!-- Exported so the reminder can also be opened by the system and by
+             automation; it shows nothing but the task names. -->
         <activity
             android:name=".AlertActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
             android:showWhenLocked="true"
