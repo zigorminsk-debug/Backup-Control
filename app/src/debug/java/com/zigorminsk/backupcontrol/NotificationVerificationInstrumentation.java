@@ -42,8 +42,10 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
                 require(channel != null, "weekly channel is missing");
                 require(channel.getImportance() == NotificationManager.IMPORTANCE_HIGH,
                         "weekly channel importance is " + channel.getImportance() + ", expected HIGH");
-                require(channel.getSound() != null, "weekly channel has no sound");
-                require(channel.shouldVibrate(), "weekly channel does not vibrate");
+                // The channel is intentionally silent and does not vibrate: the
+                // app plays its own chime on the phone speaker and vibrates, so a
+                // connected headset can no longer swallow the alert.
+                require(channel.getSound() == null, "weekly channel would play a routed system sound");
                 // Informational: the platform may normalise lock-screen visibility
                 // against the user's own settings, and it does not affect whether
                 // the reminder alerts.
