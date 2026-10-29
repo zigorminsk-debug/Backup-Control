@@ -21,6 +21,16 @@ def adb(*args, check=True):
     return result.stdout
 
 
+def wait_for_device():
+    """adb root restarts adbd, and the device answers 'offline' until it is back."""
+    adb("wait-for-device", check=False)
+    for _ in range(30):
+        if adb("get-state", check=False).strip() == "device":
+            return
+        time.sleep(2)
+    raise AssertionError("The emulator did not come back online")
+
+
 def tree():
     adb("shell", "uiautomator", "dump", "/sdcard/backup-control-window.xml")
     xml = adb("exec-out", "cat", "/sdcard/backup-control-window.xml")
@@ -419,8 +429,8 @@ def main():
 
     # Advance to Monday 00:01: the archived task must reappear at the start
     # of the selected day, not wait until the 09:00 notification time.
-    adb("root")
-    adb("wait-for-device")
+    adb("root", check=False)
+    wait_for_device()
     adb("shell", "settings", "put", "global", "auto_time", "0")
     now = int(adb("shell", "date", "+%s").strip())
     zone_name = adb("shell", "getprop", "persist.sys.timezone").strip() or "UTC"
