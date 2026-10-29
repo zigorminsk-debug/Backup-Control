@@ -99,7 +99,17 @@ def find_or_scroll(text=None, description=None, swipes=3):
     return None
 
 
+def dismiss_reminder_screen():
+    """Close the full-screen reminder if a background alert opened it."""
+    for _ in range(3):
+        if find(tree(), text="Открыть программу") is None:
+            return
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        time.sleep(1)
+
+
 def open_archive():
+    dismiss_reminder_screen()
     if find(tree(), text="Архив выполнений") is not None:
         return
     _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
@@ -109,6 +119,7 @@ def open_archive():
 
 
 def open_checklist():
+    dismiss_reminder_screen()
     if find(tree(), text="Архив выполнений") is not None:
         click(wait_for(description="Вернуться к списку задач"))
 

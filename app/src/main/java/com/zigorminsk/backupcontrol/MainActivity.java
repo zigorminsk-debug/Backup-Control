@@ -124,7 +124,9 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onResume() {
-        // The user is looking at the app, so the reminder has done its job.
+        // The user is looking at the app, so the reminder has done its job and
+        // must not take over the screen.
+        foreground = true;
         AlertPlayer.stop();
         super.onResume();
         resumed = true;
@@ -142,7 +144,11 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** True while the checklist is on screen; a reminder then needs no takeover. */
+    static boolean foreground;
+
     @Override protected void onPause() {
+        foreground = false;
         resumed = false;
         uiHandler.removeCallbacks(cycleTick);
         super.onPause();

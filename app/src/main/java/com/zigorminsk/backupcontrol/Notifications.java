@@ -219,7 +219,9 @@ final class Notifications {
                 .setStyle(lines).setContentIntent(content)
                 // Heads-up banner while the phone is in use, the reminder screen
                 // while it is locked: a notification alone is invisible there.
-                .setFullScreenIntent(fullScreen, true)
+                // Only when the user is elsewhere: taking over the screen while
+                // the app is already open would be pointless and disruptive.
+                .setFullScreenIntent(MainActivity.foreground ? null : fullScreen, !MainActivity.foreground)
                 // Swiping away must not lose the reminder: it becomes the
                 // "постопнить на сколько?" question.
                 .setDeleteIntent(ReminderScheduler.promptIntent(context))

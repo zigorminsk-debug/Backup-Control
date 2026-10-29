@@ -62,6 +62,9 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             require(Notifications.test(context), "test notification was not posted");
             require(awaitTag(manager, Notifications.TEST_TAG), "test notification is not in the shade");
 
+            // A reminder only takes over the screen when the app is in the
+            // background, which is the situation being checked here.
+            MainActivity.foreground = false;
             List<BackupItem> pending = new ArrayList<>();
             for (BackupItem item : store.items()) if (!item.checked) pending.add(item);
             if (pending.isEmpty()) {
