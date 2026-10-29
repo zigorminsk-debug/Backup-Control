@@ -8,4 +8,8 @@
         android:name=".ArchiveVerificationInstrumentation"
         android:targetPackage="com.zigorminsk.backupcontrol"
         android:label="Archive and scheduling test" />
+    <instrumentation
+        android:name=".NotificationVerificationInstrumentation"
+        android:targetPackage="com.zigorminsk.backupcontrol"
+        android:label="Notification delivery test" />
 </manifest>

@@ -89,6 +89,16 @@ def scroll_to(text=None, description=None, prefer_down=True):
     raise AssertionError("Could not scroll to " + str(text or description))
 
 
+def find_or_scroll(text=None, description=None, swipes=3):
+    """Find a control that may sit below the fold of a scrollable dialog."""
+    for _ in range(swipes + 1):
+        node = wait_for(text=text, description=description)
+        if node is not None:
+            return node
+        swipe(True)
+    return None
+
+
 def open_archive():
     if find(tree(), text="Архив выполнений") is not None:
         return
@@ -205,6 +215,13 @@ def main():
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.UpdateVerificationInstrumentation")
     if "signature_check=PASS" not in result:
         raise AssertionError("Update signature verification failed: " + result)
+    # The reminder must be able to interrupt: banner, sound and vibration, and
+    # only the weekly summary may alert. A silently posted notification is a
+    # missed reminder.
+    adb("shell", "pm", "grant", PACKAGE, "android.permission.POST_NOTIFICATIONS")
+    result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.NotificationVerificationInstrumentation")
+    if "notification_check=PASS" not in result:
+        raise AssertionError("Notification delivery verification failed: " + result)
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
     if "archive_check=PASS" not in result:
         raise AssertionError("Archive and recurrence verification failed: " + result)
@@ -218,6 +235,27 @@ def main():
                                     for n in root.iter("node") if n.get("text") or n.get("content-desc")])
         raise AssertionError("Home screen did not appear")
     capture()
+
+    # The schedule dialog must report why a reminder could be late and offer an
+    # immediate check of the real channel.
+    _, schedule = scroll_to(description="Изменить день и время проверки", prefer_down=False)
+    click(schedule)
+    if wait_for(text="ПРИДЁТ ЛИ НАПОМИНАНИЕ") is None:
+        raise AssertionError("Schedule dialog does not report notification state")
+    test_button = find_or_scroll(description="Отправить проверочное уведомление сейчас")
+    if test_button is None:
+        raise AssertionError("Notification test button is unreachable")
+    click(test_button)
+    if wait_for(text="ОТМЕНА", exact=True) is None:
+        raise AssertionError("Schedule dialog closed unexpectedly")
+    posted = adb("shell", "dumpsys", "notification", "--noredact")
+    if "notification_test" not in posted:
+        raise AssertionError("The test notification did not reach the shade")
+    if "weekly_checks_v2" not in posted:
+        # Some platform builds omit channel ids from this dump; the channel's
+        # importance, sound and vibration are asserted by instrumentation.
+        print("note: channel id is not listed by dumpsys on this build")
+    click(wait_for(text="Отмена", exact=True))
 
     # Add a task to the real UI, with two IP addresses. The address field must
     # accept plain digits and turn them into a dotted address by itself.

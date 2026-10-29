@@ -748,11 +748,38 @@ public final class MainActivity extends Activity {
             chosen[0] = hour; chosen[1] = minute; timeButton.setText(time(hour, minute));
         }, chosen[0], chosen[1], true).show());
         form.addView(timeButton, matchWrap());
+
+        // Everything that can make a reminder arrive late or silently is listed
+        // here, with a tap to fix it, plus a way to test the real channel now.
+        LinearLayout state = vertical();
+        state.setPadding(dp(12), dp(10), dp(12), dp(10));
+        state.setBackground(round(CANVAS, 10));
+        LinearLayout.LayoutParams stateParams = matchWrap(); stateParams.topMargin = dp(16);
+        form.addView(state, stateParams);
+        state.addView(text("ПРИДЁТ ЛИ НАПОМИНАНИЕ", 10, MUTED, true));
+        boolean canPost = Notifications.canPost(this, Notifications.CHECKS);
+        boolean interrupts = Notifications.checksCanInterrupt(this);
+        boolean exact = ReminderScheduler.exactAllowed(this);
+        state.addView(statusLine(canPost, "Уведомления разрешены", "Уведомления выключены — нажмите",
+                this::enableNotifications), topMargin(8));
+        state.addView(statusLine(interrupts, "Баннер и звук включены", "Канал заглушён — нажмите",
+                this::openChannelSettings), topMargin(5));
+        state.addView(statusLine(exact, "Точное время разрешено", "Android может задержать — нажмите",
+                this::enableExactAlarms), topMargin(5));
+        TextView testNotification = button("Проверить уведомление", GREEN_DARK, MINT, 13);
+        testNotification.setContentDescription("Отправить проверочное уведомление сейчас");
+        testNotification.setOnClickListener(v -> sendTestNotification());
+        state.addView(testNotification, topMargin(10));
+
         TextView hint = text("Задачи вернутся в список с начала выбранного дня. В указанное время придут уведомления о невыполненных задачах.", 13, MUTED, false);
         hint.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams hp = matchWrap(); hp.topMargin = dp(12);
         form.addView(hint, hp);
-        new AlertDialog.Builder(this).setTitle("Расписание проверки").setView(form)
+        // The dialog now also carries the notification check, so it may be
+        // taller than a small screen: keep it scrollable.
+        ScrollView formScroll = new ScrollView(this);
+        formScroll.addView(form, new ScrollView.LayoutParams(-1, -2));
+        new AlertDialog.Builder(this).setTitle("Расписание проверки").setView(formScroll)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     store.setSchedule(DAYS[spinner.getSelectedItemPosition()], chosen[0], chosen[1]);
@@ -1016,6 +1043,47 @@ public final class MainActivity extends Activity {
             }
             startActivity(intent);
         } catch (ActivityNotFoundException e) { toast("Включите уведомления в настройках приложения Android"); }
+    }
+
+    /** Shows the real reminder channel immediately, so it can be heard and seen. */
+    private void sendTestNotification() {
+        if (!Notifications.canPost(this, Notifications.CHECKS)) {
+            toast("Сначала разрешите уведомления");
+            enableNotifications();
+            return;
+        }
+        if (!Notifications.test(this)) {
+            toast("Android не показал уведомление. Проверьте настройки приложения.");
+            return;
+        }
+        toast("Уведомление отправлено: проверьте баннер и звук");
+    }
+
+    private void openChannelSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CHECKS));
+        } catch (ActivityNotFoundException e) {
+            enableNotifications();
+        }
+    }
+
+    private TextView statusLine(boolean ok, String okText, String problem, Runnable fix) {
+        TextView row = text((ok ? "✓  " : "✕  ") + (ok ? okText : problem), 13,
+                ok ? GREEN_DARK : AMBER_TEXT, true);
+        if (!ok) {
+            row.setFocusable(true);
+            row.setContentDescription(problem);
+            row.setOnClickListener(v -> fix.run());
+        }
+        return row;
+    }
+
+    private LinearLayout.LayoutParams topMargin(int value) {
+        LinearLayout.LayoutParams params = matchWrap();
+        params.topMargin = dp(value);
+        return params;
     }
 
     private void enableExactAlarms() {
