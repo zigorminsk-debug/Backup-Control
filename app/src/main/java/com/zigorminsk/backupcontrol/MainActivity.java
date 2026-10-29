@@ -103,11 +103,21 @@ public final class MainActivity extends Activity {
         }
         store = new BackupStore(this);
         Notifications.createChannels(this);
+        applyDeepLink(getIntent());
         buildShell();
         UpdateJobService.ensureScheduled(this);
         UpdateManager.checkAsync(this, false, message -> {
             if (!isFinishing() && !isDestroyed()) render();
         });
+    }
+
+    /**
+     * backupcontrol://archive opens the history directly. It is handy from a
+     * shortcut and lets automation reach the screen without guessing taps.
+     */
+    private void applyDeepLink(Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        if ("archive".equals(intent.getData().getHost())) showingArchive = true;
     }
 
     @Override protected void onStart() {
@@ -163,6 +173,7 @@ public final class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        applyDeepLink(intent);
         handleIntent(intent);
     }
 

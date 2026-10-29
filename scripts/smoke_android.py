@@ -146,6 +146,15 @@ def open_archive():
         click(button)
         if wait_for(text="Архив выполнений", attempts=6) is not None:
             return
+    # Taps can be swallowed by a window that is not focused; the archive also has
+    # a deep link, so use it rather than failing on an automation quirk.
+    print("Focus:", [line.strip() for line in
+                     adb("shell", "dumpsys", "window", check=False).splitlines()
+                     if "mCurrentFocus" in line], file=sys.stderr)
+    adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
+        "-d", "backupcontrol://archive", "-n", PACKAGE + "/.MainActivity")
+    if wait_for(text="Архив выполнений", attempts=8) is not None:
+        return
     print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
                        if n.get("text") or n.get("content-desc")], file=sys.stderr)
     raise AssertionError("Archive screen did not open")
