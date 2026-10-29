@@ -768,13 +768,15 @@ public final class MainActivity extends Activity {
                 this::enableExactAlarms), topMargin(5));
         long snoozed = store.snoozeUntil();
         if (snoozed > System.currentTimeMillis()) {
-            TextView postponed = text("⏱  Отложено до " + shortDate(snoozed) + " — нажмите, чтобы отменить",
+            TextView row = text("⏱  Отложено до " + shortDate(snoozed) + " — нажмите, чтобы отменить",
                     13, AMBER_TEXT, true);
-            TextView row = postponed;
             row.setFocusable(true);
             row.setContentDescription("Отменить отложенное напоминание");
             row.setOnClickListener(v -> {
                 ReminderScheduler.cancelSnooze(this);
+                // The dialog is built once, so drop the row immediately instead
+                // of leaving a line that no longer describes the state.
+                state.removeView(row);
                 toast("Отложенное напоминание отменено");
                 render();
             });
