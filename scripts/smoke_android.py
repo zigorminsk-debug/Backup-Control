@@ -164,14 +164,18 @@ def open_archive():
 
 def open_checklist():
     dismiss_reminder_screen()
-    if find(tree(), text="Архив выполнений") is not None:
-        back = wait_for(description="Вернуться к списку задач", attempts=4)
-        if back is not None:
-            click(back)
-        else:
-            adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
-                "-d", "backupcontrol://checklist", "-n", PACKAGE + "/.MainActivity")
-            wait_for(text="Чек-лист", attempts=8)
+    if find(tree(), text="Архив выполнений") is None:
+        return
+    back = wait_for(description="Вернуться к списку задач", attempts=4)
+    if back is not None:
+        click(back)
+        if wait_for(text="Чек-лист", attempts=6) is not None:
+            return
+    # A tap can be swallowed; the checklist is also reachable directly.
+    adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
+        "-d", "backupcontrol://checklist", "-n", PACKAGE + "/.MainActivity")
+    if wait_for(text="Чек-лист", attempts=8) is None:
+        raise AssertionError("Could not return to the checklist")
 
 
 def assert_archive_record():
