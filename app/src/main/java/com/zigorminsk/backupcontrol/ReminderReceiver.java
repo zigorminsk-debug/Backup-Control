@@ -22,7 +22,9 @@ public final class ReminderReceiver extends BroadcastReceiver {
             SnoozeActivity.open(context);
         } else if (ReminderScheduler.PICK.equals(action)) {
             int minutes = intent.getIntExtra(ReminderScheduler.EXTRA_MINUTES, 0);
+            // Zero means "do not remind me this week".
             if (minutes > 0) ReminderScheduler.snooze(context, minutes);
+            else ReminderScheduler.cancelSnooze(context);
             Notifications.cancelSnoozePrompt(context);
         } else if (ReminderScheduler.SNOOZE_DUE.equals(action)) {
             ReminderScheduler.deliverWeeklyIfDue(context);

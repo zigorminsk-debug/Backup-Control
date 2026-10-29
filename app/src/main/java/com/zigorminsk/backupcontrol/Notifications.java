@@ -228,10 +228,14 @@ final class Notifications {
                 .setAutoCancel(true)
                 .setContentIntent(ReminderScheduler.promptIntent(context))
                 .setCategory(Notification.CATEGORY_REMINDER);
-        for (int minutes : new int[]{15, 30, 60}) {
+        // The same choices as the dialog: Android may refuse to open a window
+        // from a background receiver, and then this notification is the dialog.
+        for (int minutes : SNOOZE_MINUTES) {
             builder.addAction(new Notification.Action.Builder((Icon) null, label(minutes),
                     ReminderScheduler.pickIntent(context, minutes)).build());
         }
+        builder.addAction(new Notification.Action.Builder((Icon) null, "Не напоминать на этой неделе",
+                ReminderScheduler.pickIntent(context, 0)).build());
         try {
             ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
                     .notify(PROMPT_TAG, PROMPT_ID, builder.build());

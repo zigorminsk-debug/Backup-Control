@@ -92,8 +92,9 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             require(awaitTag(manager, Notifications.PROMPT_TAG), "snooze prompt is not in the shade");
             StatusBarNotification prompt = byTag(manager, Notifications.PROMPT_TAG);
             require(prompt.getNotification().actions != null
-                            && prompt.getNotification().actions.length == 3,
-                    "snooze prompt does not offer three choices");
+                            && prompt.getNotification().actions.length
+                            == Notifications.SNOOZE_MINUTES.length + 1,
+                    "snooze prompt does not offer every delay");
             require(Notifications.SNOOZE_MINUTES.length >= 5,
                     "postpone dialog offers too few delays");
             // Postponing removes the reminder and stores the chosen delay.

@@ -243,6 +243,7 @@ def main():
         time.sleep(2)
         row = notification_row("Пора проверить бэкапы")
         if row is None:
+            adb("shell", "cmd", "statusbar", "collapse")
             return False
         x1, y1, x2, y2 = bounds(row)
         middle = (y1 + y2) // 2
@@ -251,19 +252,41 @@ def main():
         adb("shell", "input", "swipe", str(x2 - 40), str(middle), "20", str(middle), "400")
         time.sleep(1)
         adb("shell", "cmd", "statusbar", "collapse")
-        return wait_for(text="Отложить напоминание?", attempts=10) is not None
+        return True
 
-    if not any(swipe_reminder_once() for _ in range(3)):
+    # Android may refuse to raise a window from a background receiver, in which
+    # case the same question is posted as a notification. Both paths must offer
+    # every delay, so the check accepts either one.
+    def postpone_prompt_visible():
+        if wait_for(text="Отложить напоминание?", attempts=10) is not None:
+            return True
+        adb("shell", "cmd", "statusbar", "expand-notifications")
+        time.sleep(2)
+        visible = wait_for(text="Отложить напоминание?", attempts=8) is not None
+        if not visible:
+            adb("shell", "cmd", "statusbar", "collapse")
+        return visible
+
+    offered = False
+    for _ in range(3):
+        if swipe_reminder_once() and postpone_prompt_visible():
+            offered = True
+            break
+    if not offered:
+        print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
+                           if n.get("text") or n.get("content-desc")], file=sys.stderr)
+        print("Shade:", [line.strip() for line in
+                         adb("shell", "dumpsys", "notification", "--noredact").splitlines()
+                         if "tag=" in line or "NotificationRecord" in line], file=sys.stderr)
         raise AssertionError("Swiping the reminder away did not offer to postpone it")
     for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
-                   "Отложить на 2 ч", "Отложить на 3 ч"]:
+                   "Отложить на 2 ч", "Отложить на 3 ч", "Не напоминать на этой неделе"]:
         if wait_for(text=option, exact=True, attempts=10) is None:
-            raise AssertionError("Postpone dialog is missing: " + option)
-    # Choosing an option must clear the reminder. "Не напоминать" is used here so
-    # no postpone alarm is left pending for the schedule checks below.
+            raise AssertionError("Postpone choices are missing: " + option)
     click(wait_for(text="Не напоминать на этой неделе", exact=True))
     time.sleep(1)
-    if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
+    shade = adb("shell", "dumpsys", "notification", "--noredact")
+    if "tag=weekly_summary" in shade or "tag=snooze_prompt" in shade:
         raise AssertionError("The reminder stayed visible after being postponed")
 
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
