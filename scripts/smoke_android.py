@@ -291,8 +291,20 @@ def main():
             raise AssertionError("Postpone dialog is missing: " + option)
     click(wait_for(text="Отложить на 15 мин", exact=True))
     time.sleep(1)
-    if adb("shell", "dumpsys", "notification", "--noredact").count("weekly_summary"):
+    if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
         raise AssertionError("The reminder stayed visible after being postponed")
+    # The postpone is active and is shown in the schedule dialog; cancel it so it
+    # cannot fire while the schedule itself is being tested below.
+    _, schedule = scroll_to(description="Изменить день и время проверки", prefer_down=False)
+    click(schedule)
+    cancel_snooze = wait_for(description="Отменить отложенное напоминание", attempts=12)
+    if cancel_snooze is None:
+        raise AssertionError("The active postpone is not shown in the schedule dialog")
+    click(cancel_snooze)
+    time.sleep(1)
+    if wait_for(description="Отменить отложенное напоминание", attempts=4) is not None:
+        raise AssertionError("The postpone was not cancelled")
+    click(wait_for(text="Отмена", exact=True))
 
     # Add a task to the real UI, with two IP addresses. The address field must
     # accept plain digits and turn them into a dotted address by itself.
@@ -413,7 +425,7 @@ def main():
     open_checklist()
     _, checkbox = scroll_to(description="Отметить проверенным: CI_Server")
     scroll_to(text="НАПОМИНАНИЕ ОТПРАВЛЕНО")
-    if "weekly_task" in adb("shell", "dumpsys", "notification", "--noredact"):
+    if re.search(r"tag=weekly_task\b", adb("shell", "dumpsys", "notification", "--noredact")):
         raise AssertionError("Weekly notification was sent before the selected time")
 
     # Completing it before 09:00 must keep it in the archive throughout that
