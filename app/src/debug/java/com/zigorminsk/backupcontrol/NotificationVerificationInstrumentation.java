@@ -102,7 +102,12 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
                     "postpone dialog offers too few delays");
             // Choosing an option on that prompt postpones the reminder.
             ReminderScheduler.pickIntent(context, 15).send();
-            long until = store.snoozeUntil();
+            // A broadcast is delivered asynchronously, so give it a moment.
+            long until = 0;
+            for (int attempt = 0; attempt < 25 && until <= System.currentTimeMillis(); attempt++) {
+                until = store.snoozeUntil();
+                if (until <= System.currentTimeMillis()) Thread.sleep(100);
+            }
             require(until > System.currentTimeMillis(),
                     "choosing a postpone option did not store the delay");
             Notifications.cancelWeekly(context);
