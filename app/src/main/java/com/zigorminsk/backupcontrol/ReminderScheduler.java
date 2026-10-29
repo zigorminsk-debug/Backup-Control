@@ -86,11 +86,8 @@ final class ReminderScheduler {
             if (cycle != null) store.markWeeklyNotified(cycle);
             return;
         }
-        if (Notifications.weekly(context, pending)) {
-            if (cycle != null) store.markWeeklyNotified(cycle);
-            // A notification sound follows the phone's audio route, so the app
-            // rings on the built-in speaker itself.
-            AlertPlayer.play(context);
+        if (Notifications.weekly(context, pending) && cycle != null) {
+            store.markWeeklyNotified(cycle);
         }
     }
 

@@ -184,6 +184,9 @@ final class Notifications {
                 manager.notify(WEEKLY_TAG, item.id, builder.build());
             }
             postWeeklySummary(context, pending);
+            // Whoever posts the reminder also rings it: a channel sound follows
+            // the phone's audio route and would stay in connected headphones.
+            AlertPlayer.play(context);
             return true;
         } catch (SecurityException e) {
             return false;
