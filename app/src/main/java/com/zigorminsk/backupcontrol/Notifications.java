@@ -153,7 +153,8 @@ final class Notifications {
                 if (Build.VERSION.SDK_INT >= 26) {
                     // Only the summary interrupts: ten tasks must not mean ten
                     // sounds, but the reminder itself must still be unmissable.
-                    builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY).setSilent(true);
+                    // GROUP_ALERT_SUMMARY already keeps these rows silent.
+                    builder.setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY);
                 } else {
                     builder.setPriority(Notification.PRIORITY_LOW);
                 }
