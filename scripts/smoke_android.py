@@ -248,6 +248,10 @@ def main():
     time.sleep(1)
     if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
         raise AssertionError("The reminder stayed in the shade after postponing it")
+    # Choosing an option closes the reminder screen, so return to the app.
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
+    if wait_for(text="Ваши бэкапы") is None:
+        raise AssertionError("The app did not come back after postponing")
     # Cancel the postpone through the schedule dialog so it cannot fire later.
     _, schedule = scroll_to(description="Изменить день и время проверки", prefer_down=False)
     click(schedule)
