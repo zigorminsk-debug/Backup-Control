@@ -237,6 +237,27 @@ def main():
     if "actions=1" not in summary_line:
         raise AssertionError("The reminder has no postpone action: " + summary_line)
 
+    # A locked phone shows no banner, so the reminder takes over the screen. The
+    # screen must render the tasks and every postpone option, and a choice must
+    # close it.
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.AlertActivity")
+    for expected in ["Пора проверить бэкапы", "Открыть программу", "15 мин", "30 мин", "3 ч"]:
+        if wait_for(text=expected, exact=True, attempts=10) is None:
+            raise AssertionError("Reminder screen is missing: " + expected)
+    click(wait_for(text="15 мин", exact=True))
+    time.sleep(1)
+    if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
+        raise AssertionError("The reminder stayed in the shade after postponing it")
+    # Cancel the postpone through the schedule dialog so it cannot fire later.
+    _, schedule = scroll_to(description="Изменить день и время проверки", prefer_down=False)
+    click(schedule)
+    cancel_snooze = wait_for(description="Отменить отложенное напоминание", attempts=12)
+    if cancel_snooze is None:
+        raise AssertionError("The postpone from the reminder screen was not stored")
+    click(cancel_snooze)
+    time.sleep(1)
+    click(wait_for(text="Отмена", exact=True))
+
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
     if "archive_check=PASS" not in result:
         raise AssertionError("Archive and recurrence verification failed: " + result)
@@ -266,7 +287,7 @@ def main():
     posted = adb("shell", "dumpsys", "notification", "--noredact")
     if "notification_test" not in posted:
         raise AssertionError("The test notification did not reach the shade")
-    if "weekly_checks_v3" not in posted:
+    if "weekly_checks_v4" not in posted:
         # Some platform builds omit channel ids from this dump; the channel's
         # importance, sound, vibration and its own chime are asserted by
         # instrumentation.

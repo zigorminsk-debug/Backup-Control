@@ -80,12 +80,20 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             require(posted.deleteIntent != null, "swiping the summary away would be lost");
             require(posted.actions != null && posted.actions.length == 1,
                     "summary has no postpone action");
+            // A channel's sound follows the phone's audio route (headphones only
+            // with a headset attached), so the channel is silent and the app
+            // plays its own chime on the built-in speaker.
             if (Build.VERSION.SDK_INT >= 26) {
-                Uri expected = Uri.parse("android.resource://" + context.getPackageName() + "/"
-                        + R.raw.notification_chime);
-                require(expected.equals(manager.getNotificationChannel(Notifications.CHECKS).getSound()),
-                        "weekly channel does not use the app's own chime");
+                NotificationChannel checks = manager.getNotificationChannel(Notifications.CHECKS);
+                require(checks.getSound() == null, "weekly channel has a routed system sound");
             }
+            require(AlertPlayer.lastPlayedAt() > 0, "the app did not play its own reminder sound");
+            require(AlertPlayer.builtinSpeaker(context) != null,
+                    "the phone speaker is not available for the reminder");
+            // A locked phone shows no banner, so the reminder also takes over the
+            // screen; the same notification becomes a heads-up when in use.
+            require(posted.fullScreenIntent != null,
+                    "the reminder has no full-screen intent for a locked phone");
             // Swiping the reminder away asks how long to postpone. The gesture
             // itself cannot be performed from here, so fire exactly the intent
             // Android fires on swipe: that is the wiring that matters.

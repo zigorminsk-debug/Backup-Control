@@ -26,7 +26,7 @@ final class Notifications {
      * Android freezes a channel's settings once it exists, hence the version in
      * the id: installs that only knew the old quiet channel get the new one.
      */
-    static final String CHECKS = "weekly_checks_v3";
+    static final String CHECKS = "weekly_checks_v4";
     static final String ERRORS = "error_reminders";
     static final String UPDATES = "app_updates";
     /** Silent by design: it only asks how long to postpone. */
@@ -52,14 +52,12 @@ final class Notifications {
         NotificationChannel checks = new NotificationChannel(CHECKS,
                 context.getString(R.string.notification_channel_checks), NotificationManager.IMPORTANCE_HIGH);
         checks.setDescription("Напоминание начать еженедельную проверку резервных копий");
-        // The alarm stream is used on purpose: the phone itself has to ring, and
-        // this stream is not muted by a low notification volume.
-        checks.setSound(chime(context), new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build());
-        checks.enableVibration(true);
-        checks.setVibrationPattern(new long[]{0, 400, 220, 400});
+        // Deliberately silent: a channel's sound follows the phone's audio route,
+        // so with headphones connected it would ring in the headphones only.
+        // AlertPlayer plays the chime on the built-in speaker instead, and
+        // vibrates, so the phone itself always alerts.
+        checks.setSound(null, null);
+        checks.enableVibration(false);
         checks.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         checks.setShowBadge(true);
         NotificationChannel errors = new NotificationChannel(ERRORS,
@@ -105,6 +103,13 @@ final class Notifications {
             if (notificationChannel != null && notificationChannel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
         }
         return true;
+    }
+
+    /** Android 14 lets the user forbid full-screen reminders. */
+    static boolean fullScreenAllowed(Context context) {
+        if (Build.VERSION.SDK_INT < 34) return true;
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        return manager.canUseFullScreenIntent();
     }
 
     /** True when the weekly channel is allowed to interrupt the user. */
@@ -200,10 +205,18 @@ final class Notifications {
                 .setBigContentTitle("Задачи на проверку");
         for (int i = 0; i < Math.min(5, pending.size()); i++) lines.addLine(pending.get(i).name);
         if (pending.size() > 5) lines.setSummaryText("И ещё " + (pending.size() - 5));
+        Intent full = new Intent(context, AlertActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .setData(Uri.parse("backupcontrol://alert/" + System.currentTimeMillis()));
+        PendingIntent fullScreen = PendingIntent.getActivity(context, 5, full,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = base(context, CHECKS)
                 .setContentTitle("Пора проверить бэкапы")
                 .setContentText("Ожидают проверки: " + pending.size())
                 .setStyle(lines).setContentIntent(content)
+                // Heads-up banner while the phone is in use, the reminder screen
+                // while it is locked: a notification alone is invisible there.
+                .setFullScreenIntent(fullScreen, true)
                 // Swiping away must not lose the reminder: it becomes the
                 // "постопнить на сколько?" question.
                 .setDeleteIntent(ReminderScheduler.promptIntent(context))

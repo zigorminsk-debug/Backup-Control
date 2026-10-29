@@ -124,6 +124,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onResume() {
+        // The user is looking at the app, so the reminder has done its job.
+        AlertPlayer.stop();
         super.onResume();
         resumed = true;
         ReminderScheduler.rescheduleAll(this);
@@ -766,6 +768,12 @@ public final class MainActivity extends Activity {
                 this::openChannelSettings), topMargin(5));
         state.addView(statusLine(exact, "Точное время разрешено", "Android может задержать — нажмите",
                 this::enableExactAlarms), topMargin(5));
+        // On a locked phone a notification alone is easy to miss, so the
+        // reminder takes over the screen. Android 14 lets the user forbid that.
+        state.addView(statusLine(Notifications.fullScreenAllowed(this),
+                "Показ на заблокированном экране разрешён",
+                "Показ на заблокированном экране запрещён — нажмите",
+                this::openFullScreenSettings), topMargin(5));
         long snoozed = store.snoozeUntil();
         if (snoozed > System.currentTimeMillis()) {
             TextView row = text("⏱  Отложено до " + shortDate(snoozed) + " — нажмите, чтобы отменить",
@@ -1073,6 +1081,16 @@ public final class MainActivity extends Activity {
             return;
         }
         toast("Уведомление отправлено: проверьте баннер и звук");
+    }
+
+    private void openFullScreenSettings() {
+        if (Build.VERSION.SDK_INT < 34) return;
+        try {
+            startActivity(new Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT")
+                    .setData(Uri.parse("package:" + getPackageName())));
+        } catch (RuntimeException e) {
+            enableNotifications();
+        }
     }
 
     private void openChannelSettings() {

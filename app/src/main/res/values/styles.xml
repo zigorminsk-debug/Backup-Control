@@ -12,4 +12,11 @@
     <style name="SnoozeTheme" parent="android:style/Theme.Material.Light.Dialog.Alert">
         <item name="android:colorAccent">@color/green</item>
     </style>
+
+    <style name="AlertTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:colorAccent">@color/green</item>
+        <item name="android:statusBarColor">@color/canvas</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>

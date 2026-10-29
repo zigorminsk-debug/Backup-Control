@@ -86,7 +86,12 @@ final class ReminderScheduler {
             if (cycle != null) store.markWeeklyNotified(cycle);
             return;
         }
-        if (Notifications.weekly(context, pending) && cycle != null) store.markWeeklyNotified(cycle);
+        if (Notifications.weekly(context, pending)) {
+            if (cycle != null) store.markWeeklyNotified(cycle);
+            // A notification sound follows the phone's audio route, so the app
+            // rings on the built-in speaker itself.
+            AlertPlayer.play(context);
+        }
     }
 
     /** Postpones the weekly reminder; the next alert fires after the given delay. */
@@ -96,6 +101,7 @@ final class ReminderScheduler {
         store.setSnooze(until);
         schedule(context, until, snoozeIntent(context));
         Notifications.cancelWeekly(context);
+        AlertPlayer.stop();
         AppEvents.changed(context);
         return until;
     }
@@ -109,6 +115,7 @@ final class ReminderScheduler {
         manager.cancel(pending);
         pending.cancel();
         Notifications.cancelWeekly(context);
+        AlertPlayer.stop();
         AppEvents.changed(context);
     }
 

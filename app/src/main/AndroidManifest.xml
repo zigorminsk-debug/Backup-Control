@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Notification vibration (the weekly reminder must be felt, not only heard). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Shows the reminder over the lock screen; without it a locked phone only
+         gets a silent notification that is easy to miss. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Android 12 can refuse SCHEDULE_EXACT_ALARM, which silently turns the
          weekly reminder into an inexact alarm that may fire hours late. On
          Android 13+ USE_EXACT_ALARM is granted on install because the app's only
@@ -32,6 +35,15 @@
             </intent-filter>
         </activity>
         <receiver android:name=".ReminderReceiver" android:exported="false" />
+        <!-- The reminder shown over the lock screen when it is due. -->
+        <activity
+            android:name=".AlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AlertTheme" />
         <!-- Dialog shown when the reminder is swiped away. -->
         <activity
             android:name=".SnoozeActivity"
