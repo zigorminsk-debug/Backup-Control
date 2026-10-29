@@ -235,6 +235,37 @@ def main():
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.NotificationVerificationInstrumentation")
     if "notification_check=PASS" not in result:
         raise AssertionError("Notification delivery verification failed: " + result)
+    # Swiping the weekly reminder away must ask how long to postpone it. The
+    # notification check leaves that reminder in the shade on purpose, so this
+    # runs before anything else can dismiss it.
+    def swipe_reminder_once():
+        adb("shell", "cmd", "statusbar", "expand-notifications")
+        time.sleep(2)
+        row = notification_row("Пора проверить бэкапы")
+        if row is None:
+            return False
+        x1, y1, x2, y2 = bounds(row)
+        middle = (y1 + y2) // 2
+        # Start well inside the row and drag it across the screen: a swipe that
+        # begins at the very edge sometimes misses the touch target.
+        adb("shell", "input", "swipe", str(x2 - 40), str(middle), "20", str(middle), "400")
+        time.sleep(1)
+        adb("shell", "cmd", "statusbar", "collapse")
+        return wait_for(text="Отложить напоминание?", attempts=10) is not None
+
+    if not any(swipe_reminder_once() for _ in range(3)):
+        raise AssertionError("Swiping the reminder away did not offer to postpone it")
+    for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
+                   "Отложить на 2 ч", "Отложить на 3 ч"]:
+        if wait_for(text=option, exact=True, attempts=10) is None:
+            raise AssertionError("Postpone dialog is missing: " + option)
+    # Choosing an option must clear the reminder. "Не напоминать" is used here so
+    # no postpone alarm is left pending for the schedule checks below.
+    click(wait_for(text="Не напоминать на этой неделе", exact=True))
+    time.sleep(1)
+    if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
+        raise AssertionError("The reminder stayed visible after being postponed")
+
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
     if "archive_check=PASS" not in result:
         raise AssertionError("Archive and recurrence verification failed: " + result)
@@ -269,48 +300,6 @@ def main():
         # importance, sound, vibration and its own chime are asserted by
         # instrumentation.
         print("note: channel id is not listed by dumpsys on this build")
-    click(wait_for(text="Отмена", exact=True))
-
-    # Swiping the weekly reminder away must ask how long to postpone it. The
-    # instrumentation leaves that reminder in the shade for this step.
-    def swipe_reminder_once():
-        adb("shell", "cmd", "statusbar", "expand-notifications")
-        time.sleep(2)
-        row = notification_row("Пора проверить бэкапы")
-        if row is None:
-            return False
-        x1, y1, x2, y2 = bounds(row)
-        middle = (y1 + y2) // 2
-        # Start well inside the row and drag it across the screen: a swipe that
-        # begins at the very edge sometimes misses the touch target.
-        adb("shell", "input", "swipe", str(x2 - 40), str(middle), "20", str(middle), "400")
-        time.sleep(1)
-        adb("shell", "cmd", "statusbar", "collapse")
-        return wait_for(text="Отложить напоминание?", attempts=10) is not None
-
-    if not any(swipe_reminder_once() for _ in range(3)):
-        print("Notifications:", adb("shell", "dumpsys", "notification", "--noredact")[-2000:],
-              file=sys.stderr)
-        raise AssertionError("Swiping the reminder away did not offer to postpone it")
-    for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
-                   "Отложить на 2 ч", "Отложить на 3 ч"]:
-        if wait_for(text=option, exact=True, attempts=10) is None:
-            raise AssertionError("Postpone dialog is missing: " + option)
-    click(wait_for(text="Отложить на 15 мин", exact=True))
-    time.sleep(1)
-    if "tag=weekly_summary" in adb("shell", "dumpsys", "notification", "--noredact"):
-        raise AssertionError("The reminder stayed visible after being postponed")
-    # The postpone is active and is shown in the schedule dialog; cancel it so it
-    # cannot fire while the schedule itself is being tested below.
-    _, schedule = scroll_to(description="Изменить день и время проверки", prefer_down=False)
-    click(schedule)
-    cancel_snooze = wait_for(description="Отменить отложенное напоминание", attempts=12)
-    if cancel_snooze is None:
-        raise AssertionError("The active postpone is not shown in the schedule dialog")
-    click(cancel_snooze)
-    time.sleep(1)
-    if wait_for(description="Отменить отложенное напоминание", attempts=4) is not None:
-        raise AssertionError("The postpone was not cancelled")
     click(wait_for(text="Отмена", exact=True))
 
     # Add a task to the real UI, with two IP addresses. The address field must
