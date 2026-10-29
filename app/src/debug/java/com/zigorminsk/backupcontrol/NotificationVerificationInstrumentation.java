@@ -86,10 +86,13 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
                 require(expected.equals(manager.getNotificationChannel(Notifications.CHECKS).getSound()),
                         "weekly channel does not use the app's own chime");
             }
-            // Swiping away asks how long to postpone; every option must be there.
-            require(Notifications.snoozePrompt(context), "snooze prompt was not posted");
-            // The shade is updated asynchronously after notify().
-            require(awaitTag(manager, Notifications.PROMPT_TAG), "snooze prompt is not in the shade");
+            // Swiping the reminder away asks how long to postpone. The gesture
+            // itself cannot be performed from here, so fire exactly the intent
+            // Android fires on swipe: that is the wiring that matters.
+            require(posted.deleteIntent != null, "summary has no swipe intent");
+            posted.deleteIntent.send();
+            require(awaitTag(manager, Notifications.PROMPT_TAG),
+                    "swiping the reminder away produced no postpone prompt");
             StatusBarNotification prompt = byTag(manager, Notifications.PROMPT_TAG);
             require(prompt.getNotification().actions != null
                             && prompt.getNotification().actions.length
@@ -97,10 +100,11 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
                     "snooze prompt does not offer every delay");
             require(Notifications.SNOOZE_MINUTES.length >= 5,
                     "postpone dialog offers too few delays");
-            // Postponing removes the reminder and stores the chosen delay.
-            long until = ReminderScheduler.snooze(context, 15);
-            require(store.snoozeUntil() == until && until > System.currentTimeMillis(),
-                    "postpone was not stored");
+            // Choosing an option on that prompt postpones the reminder.
+            ReminderScheduler.pickIntent(context, 15).send();
+            long until = store.snoozeUntil();
+            require(until > System.currentTimeMillis(),
+                    "choosing a postpone option did not store the delay");
             Notifications.cancelWeekly(context);
             ReminderScheduler.deliverWeeklyIfDue(context);
             require(awaitAbsent(manager, "weekly_summary"),

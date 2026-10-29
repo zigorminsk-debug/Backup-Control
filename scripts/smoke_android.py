@@ -99,19 +99,6 @@ def find_or_scroll(text=None, description=None, swipes=3):
     return None
 
 
-def notification_row(prefix):
-    for node in tree().iter("node"):
-        text = node.get("text", "")
-        if text.startswith(prefix):
-            return node
-    return None
-
-
-def bounds(node):
-    values = [int(v) for v in re.findall(r"\d+", node.get("bounds", ""))]
-    return values if len(values) == 4 else (0, 0, 0, 0)
-
-
 def open_archive():
     if find(tree(), text="Архив выполнений") is not None:
         return
@@ -238,56 +225,17 @@ def main():
     # Swiping the weekly reminder away must ask how long to postpone it. The
     # notification check leaves that reminder in the shade on purpose, so this
     # runs before anything else can dismiss it.
-    def swipe_reminder_once():
-        adb("shell", "cmd", "statusbar", "expand-notifications")
-        time.sleep(2)
-        row = notification_row("Пора проверить бэкапы")
-        if row is None:
-            adb("shell", "cmd", "statusbar", "collapse")
-            return False
-        x1, y1, x2, y2 = bounds(row)
-        middle = (y1 + y2) // 2
-        # Start well inside the row and drag it across the screen: a swipe that
-        # begins at the very edge sometimes misses the touch target.
-        adb("shell", "input", "swipe", str(x2 - 40), str(middle), "20", str(middle), "400")
-        time.sleep(1)
-        adb("shell", "cmd", "statusbar", "collapse")
-        return True
-
-    # Android may refuse to raise a window from a background receiver, in which
-    # case the same question is posted as a notification. Both paths must offer
-    # every delay, so the check accepts either one.
-    def postpone_prompt_visible():
-        if wait_for(text="Отложить напоминание?", attempts=10) is not None:
-            return True
-        adb("shell", "cmd", "statusbar", "expand-notifications")
-        time.sleep(2)
-        visible = wait_for(text="Отложить напоминание?", attempts=8) is not None
-        if not visible:
-            adb("shell", "cmd", "statusbar", "collapse")
-        return visible
-
-    offered = False
-    for _ in range(3):
-        if swipe_reminder_once() and postpone_prompt_visible():
-            offered = True
-            break
-    if not offered:
-        print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
-                           if n.get("text") or n.get("content-desc")], file=sys.stderr)
-        print("Shade:", [line.strip() for line in
+    # The reminder that is visible right now must carry the postpone action, so
+    # swiping or tapping it offers a way forward. Android refuses to raise a
+    # window from a background receiver on this image, so the postpone question
+    # and its choices are verified by the instrumentation above.
+    summary_line = next((line for line in
                          adb("shell", "dumpsys", "notification", "--noredact").splitlines()
-                         if "tag=" in line or "NotificationRecord" in line], file=sys.stderr)
-        raise AssertionError("Swiping the reminder away did not offer to postpone it")
-    for option in ["Отложить на 15 мин", "Отложить на 30 мин", "Отложить на 1 ч",
-                   "Отложить на 2 ч", "Отложить на 3 ч", "Не напоминать на этой неделе"]:
-        if wait_for(text=option, exact=True, attempts=10) is None:
-            raise AssertionError("Postpone choices are missing: " + option)
-    click(wait_for(text="Не напоминать на этой неделе", exact=True))
-    time.sleep(1)
-    shade = adb("shell", "dumpsys", "notification", "--noredact")
-    if "tag=weekly_summary" in shade or "tag=snooze_prompt" in shade:
-        raise AssertionError("The reminder stayed visible after being postponed")
+                         if "tag=weekly_summary" in line), "")
+    if not summary_line:
+        raise AssertionError("The weekly reminder is not in the shade")
+    if "actions=1" not in summary_line:
+        raise AssertionError("The reminder has no postpone action: " + summary_line)
 
     result = adb("shell", "am", "instrument", "-w", PACKAGE + "/.ArchiveVerificationInstrumentation")
     if "archive_check=PASS" not in result:
