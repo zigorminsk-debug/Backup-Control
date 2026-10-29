@@ -102,7 +102,7 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
                     "postpone was not stored");
             Notifications.cancelWeekly(context);
             ReminderScheduler.deliverWeeklyIfDue(context);
-            require(!awaitTag(manager, "weekly_summary"),
+            require(awaitAbsent(manager, "weekly_summary"),
                     "a postponed reminder alerted again immediately");
             // When the delay is over the reminder must return.
             store.setSnooze(System.currentTimeMillis() - 1000);
@@ -135,6 +135,19 @@ public final class NotificationVerificationInstrumentation extends Instrumentati
             if (tag.equals(notification.getTag())) return notification;
         }
         return null;
+    }
+
+    /** Cancelling a notification is reflected in the shade asynchronously. */
+    private static boolean awaitAbsent(NotificationManager manager, String tag) {
+        for (int attempt = 0; attempt < 25; attempt++) {
+            if (byTag(manager, tag) == null) return true;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private static boolean awaitTag(NotificationManager manager, String tag) {
