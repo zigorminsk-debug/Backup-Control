@@ -111,6 +111,9 @@ def find_or_scroll(text=None, description=None, swipes=3):
 
 def dismiss_reminder_screen():
     """Close the full-screen reminder if a background alert opened it."""
+    # A pulled-down shade hides the app from the automation.
+    adb("shell", "cmd", "statusbar", "collapse")
+    time.sleep(.5)
     if find(tree(), text="Открыть программу") is None:
         return
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
@@ -132,8 +135,13 @@ def open_archive():
         y = (int(re.findall(r"\d+", button.get("bounds", "0"))[1])
              + int(re.findall(r"\d+", button.get("bounds", "0"))[3])) // 2
         if y < 90:
-            # The header is pinned under the status bar; pull the content down.
-            swipe(up=False)
+            # The header is pinned under the status bar; pull the content down a
+            # little, starting low so the gesture cannot open the shade instead.
+            size = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size"))[-1]
+            width, height = map(int, size)
+            adb("shell", "input", "swipe", str(width // 2), str(int(height * .62)),
+                str(width // 2), str(int(height * .80)), "400")
+            time.sleep(.7)
             _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
         click(button)
         if wait_for(text="Архив выполнений", attempts=6) is not None:
