@@ -100,29 +100,28 @@ def find_or_scroll(text=None, description=None, swipes=3):
 
 
 def dismiss_reminder_screen():
-    """Wake the screen and close the full-screen reminder if one is showing."""
-    # The reminder turns the screen on; afterwards it may fall asleep again and
-    # hide everything from the automation.
-    adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
-    adb("shell", "wm", "dismiss-keyguard", check=False)
-    for _ in range(3):
-        root = tree()
-        if find(root, text="Открыть программу") is None:
-            return
-        adb("shell", "input", "keyevent", "KEYCODE_BACK")
-        time.sleep(1)
+    """Close the full-screen reminder if a background alert opened it."""
+    if find(tree(), text="Открыть программу") is None:
+        return
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    time.sleep(1)
+    adb("shell", "cmd", "statusbar", "collapse")
 
 
 def open_archive():
     dismiss_reminder_screen()
     if find(tree(), text="Архив выполнений") is not None:
         return
-    _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
-    click(button)
-    if wait_for(text="Архив выполнений") is None:
-        print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
-                           if n.get("text") or n.get("content-desc")], file=sys.stderr)
-        raise AssertionError("Archive screen did not open")
+    # A tap can be swallowed while a window is still settling, so retry with
+    # freshly read bounds instead of clicking a stale node once.
+    for _ in range(3):
+        _, button = scroll_to(description="Открыть архив выполненных задач", prefer_down=False)
+        click(button)
+        if wait_for(text="Архив выполнений", attempts=6) is not None:
+            return
+    print("Visible:", [(n.get("text"), n.get("content-desc")) for n in tree().iter("node")
+                       if n.get("text") or n.get("content-desc")], file=sys.stderr)
+    raise AssertionError("Archive screen did not open")
 
 
 def open_checklist():
