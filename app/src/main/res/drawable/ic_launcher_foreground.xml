@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield shape -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M54,22L28,33v20c0,16.5 11.1,31.9 26,35.6C68.9,84.9 80,69.5 80,53V33L54,22z" />
+    <!-- Inner shield -->
+    <path
+        android:fillColor="#0F2942"
+        android:pathData="M54,28.5L34,37v16c0,13.1 8.5,25.4 20,28.9c11.5,-3.5 20,-15.8 20,-28.9V37L54,28.5z" />
+    <!-- Checkmark / backup arrow -->
+    <path
+        android:fillColor="#4ADE80"
+        android:pathData="M48.5,63.2L39.8,54.5l4.2,-4.2l4.5,4.5l15.5,-15.5l4.2,4.2L48.5,63.2z" />
+</vector>

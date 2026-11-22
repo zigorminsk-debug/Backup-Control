@@ -1,0 +1,8 @@
+-keep class javax.mail.** { *; }
+-keep class com.sun.mail.** { *; }
+-keep class javax.activation.** { *; }
+-keep class com.sun.activation.** { *; }
+-keep class myjava.awt.datatransfer.** { *; }
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn java.beans.**
