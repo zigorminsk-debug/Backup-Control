@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build & Publish Signed Android APK
 
 on:
   push:
@@ -10,10 +10,14 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-apk:
+  build-and-publish:
+    name: Сборка, проверка подписи и публикация APK
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -28,24 +32,96 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-
-      - name: Prepare named APK
+      - name: Compute version
+        id: version
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk BackupControl.apk
-          ls -lh BackupControl.apk
+          VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="1.0.${VERSION_CODE}"
+          TAG="v${VERSION_NAME}"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Building Backup Control ${VERSION_NAME} (versionCode=${VERSION_CODE})"
 
-      - name: Upload APK Artifact
+      - name: Run Unit Tests & Build Signed Release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew testReleaseUnitTest assembleRelease \
+            -PversionCode="${{ steps.version.outputs.version_code }}" \
+            -PversionName="${{ steps.version.outputs.version_name }}" \
+            --no-daemon
+
+      - name: Verify APK signature continuity & versionCode
+        id: verify_apk
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          test -n "$RAW_APK"
+          cp "$RAW_APK" dist/Backup-Control.apk
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -V | tail -n 1)
+
+          "$APKSIGNER" verify --print-certs dist/Backup-Control.apk | tee "$RUNNER_TEMP/certs.txt"
+          NEW_SHA=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/certs.txt" | head -n 1)
+          PINNED_SHA=$(tr -d '[:space:]' < docs/release-fingerprint.txt)
+
+          if [[ "$NEW_SHA" != "$PINNED_SHA" ]]; then
+            echo "::error::APK SHA-256 ($NEW_SHA) does not match pinned release fingerprint ($PINNED_SHA)"
+            exit 1
+          fi
+
+          CODE=$(sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" <("$AAPT2" dump badging dist/Backup-Control.apk) | head -n 1)
+          if [[ "$CODE" != "${{ steps.version.outputs.version_code }}" ]]; then
+            echo "::error::APK versionCode ($CODE) does not match expected ${{ steps.version.outputs.version_code }}"
+            exit 1
+          fi
+
+          APK_FILE_SHA256=$(sha256sum dist/Backup-Control.apk | awk '{print $1}')
+          echo "apk_sha256=${APK_FILE_SHA256}" >> "$GITHUB_OUTPUT"
+          ls -lh dist/Backup-Control.apk
+
+      - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BackupControl-APK
-          path: BackupControl.apk
+          path: dist/Backup-Control.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION_NAME="${{ steps.version.outputs.version_name }}"
+          VERSION_CODE="${{ steps.version.outputs.version_code }}"
+          APK_SHA="${{ steps.version.outputs.apk_sha256 }}"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+
+          cat <<EOF > release-notes.md
+          **Backup Control v${VERSION_NAME}** (\`versionCode=${VERSION_CODE}\`, коммит \`${SHORT_SHA}\`) — Android-приложение автоматического мониторинга резервного копирования по почте **\`backup@csl.by\`**.
+
+          ### 📥 Скачать APK
+          - 📱 **[Скачать Backup-Control.apk](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Backup-Control.apk)**
+          - Подписан постоянным ключом \`release-key/backup-control-release.p12\` — устанавливается поверх прошлых версий и поддерживает встроенное автообновление из раздела «Настройки».
+          - SHA-256 файла APK: \`${APK_SHA}\`
+
+          ### ✨ Возможности выпуска
+          - Первичный сбор писем за **6 месяцев** по IMAP (\`backup@csl.by\`).
+          - **Редактирование и сохранение списка организаций после сбора за 6 месяцев** (переименование, основные и дополнительные email-адреса, объединение дубликатов, исключение лишних отправителей).
+          - **Контроль строго по сохранённым организациям** + **автоматическое добавление новых организаций при их появлении** со значком \`НОВАЯ\`.
+          - Автоматическая утренняя проверка в **09:20 (Пн–Пт)** и всплывающий баннер при ошибках бэкапа или отсутствии почты несколько дней.
+          EOF
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/Backup-Control.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/Backup-Control.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Backup Control ${VERSION_NAME}" \
+              --notes-file release-notes.md
+          fi

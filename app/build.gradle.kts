@@ -5,23 +5,56 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+val computedVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull()
+    ?: (100 + runNumber)
+val computedVersionName = project.findProperty("versionName")?.toString()
+    ?: "1.0.$computedVersionCode"
+
+val repoKeystoreFile = rootProject.file("release-key/backup-control-release.p12")
+val repoPasswordFile = rootProject.file("release-key/password.txt")
+val envKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+
 android {
-    namespace = "by.csl.backupcontrol"
+    namespace = "com.zigorminsk.backupcontrol"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "by.csl.backupcontrol"
+        applicationId = "com.zigorminsk.backupcontrol"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = computedVersionCode
+        versionName = computedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (!envKeystorePath.isNullOrBlank() && file(envKeystorePath).exists()) {
+                storeFile = file(envKeystorePath)
+                storeType = "PKCS12"
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "backup-control"
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+            } else if (repoKeystoreFile.exists() && repoPasswordFile.exists()) {
+                val pwd = repoPasswordFile.readText().trim()
+                storeFile = repoKeystoreFile
+                storeType = "PKCS12"
+                storePassword = pwd
+                keyAlias = "backup-control"
+                keyPassword = pwd
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            val releaseSign = signingConfigs.getByName("release")
+            if (releaseSign.storeFile != null) {
+                signingConfig = releaseSign
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -29,7 +62,10 @@ android {
         }
         debug {
             applicationIdSuffix = ""
-            versionNameSuffix = "-debug"
+            val releaseSign = signingConfigs.getByName("release")
+            if (releaseSign.storeFile != null) {
+                signingConfig = releaseSign
+            }
         }
     }
 
